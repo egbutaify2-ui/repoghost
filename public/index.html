@@ -56,34 +56,31 @@
 
       <section class="investigate-panel" aria-labelledby="investigate-heading">
         <div class="panel-heading">
-          <div><span class="section-index">01 / ENTRY POINT</span><h2 id="investigate-heading">Start an investigation</h2></div>
-          <span class="panel-code">GH / PUBLIC REPOS ONLY</span>
-        </div>
-        <div class="entry-tabs" role="group" aria-label="Choose investigation entry point">
-          <button type="button" class="entry-tab" data-entry-mode="repository" aria-pressed="true">Repository URL</button>
-          <button type="button" class="entry-tab" data-entry-mode="account" aria-pressed="false">GitHub username / org</button>
+          <div><span class="section-index">01 / ACCOUNT SEARCH</span><h2 id="investigate-heading">Search GitHub by username</h2></div>
+          <span class="panel-code">PUBLIC ACCOUNTS / READ ONLY</span>
         </div>
         <form id="investigate-form" novalidate>
-          <label class="sr-only" for="repository-url">Public GitHub repository URL</label>
+          <label class="sr-only" for="github-username">GitHub username or organization</label>
           <div class="input-wrap">
-            <span class="input-prefix" aria-hidden="true">⌁</span>
-            <input id="repository-url" name="repositoryUrl" type="url" placeholder="https://github.com/owner/repository" autocomplete="url" spellcheck="false" required aria-describedby="url-help">
-            <button id="investigate-button" type="submit"><span>Investigate repository</span><span class="button-arrow" aria-hidden="true">↗</span></button>
+            <span class="input-prefix" aria-hidden="true">@</span>
+            <input id="github-username" name="username" type="text" placeholder="Enter a GitHub username or org, e.g. expressjs" autocomplete="off" spellcheck="false" required aria-describedby="url-help" maxlength="2048">
+            <button id="investigate-button" type="submit"><span>Search GitHub</span><span class="button-arrow" aria-hidden="true">↗</span></button>
           </div>
-          <div class="input-meta"><p id="url-help">Paste a public GitHub URL. No sign-in required.</p><p class="keyboard-hint">READ-ONLY <span>·</span> NO CLONING <span>·</span> NO CODE EXECUTION</p></div>
+          <div class="input-meta"><p id="url-help">Search a public GitHub username or organization. We’ll list repositories, then you can open evidence and ask questions.</p><p class="keyboard-hint">READ-ONLY <span>·</span> PUBLIC REPOS <span>·</span> CITATIONS FIRST</p></div>
           <p id="form-error" class="form-error" role="alert" hidden></p>
         </form>
         <div class="examples-row" id="examples-row">
           <span class="examples-label">QUICK LOOK</span>
-          <button type="button" class="example-repo" data-repo="https://github.com/expressjs/express">expressjs / express <span>↗</span></button>
-          <button type="button" class="example-repo" data-repo="https://github.com/nodejs/undici">nodejs / undici <span>↗</span></button>
-          <span class="examples-note">Active projects are fine too — activity is evidence, not a verdict.</span>
+          <button type="button" class="example-repo" data-username="expressjs">@expressjs <span>↗</span></button>
+          <button type="button" class="example-repo" data-username="nodejs">@nodejs <span>↗</span></button>
+          <button type="button" class="example-repo" data-username="octocat">@octocat <span>↗</span></button>
+          <span class="examples-note">Search an account first; inspect each repository only when needed.</span>
         </div>
       </section>
 
       <section id="results" class="results-section" aria-live="polite" aria-busy="false" hidden>
         <div class="results-header">
-          <div><span class="section-index">02 / CASE FILE</span><h2>Investigation results</h2></div>
+          <div><span class="section-index">02 / CASE FILE</span><h2>Account and repository results</h2></div>
           <button type="button" id="clear-results" class="reset-button">Clear case <span aria-hidden="true">↺</span></button>
         </div>
         <div id="results-content"></div>
