@@ -173,7 +173,7 @@ async function fetchCachedGithubResponse(fetchImpl, url, options = {}) {
   }
   if (cached) cache.delete(cacheKey);
 
-  const response = await fetchCachedGithubResponse(fetchImpl, url, { ...options, headers });
+  const response = await fetchResponse(fetchImpl, url, { ...options, headers });
   if (response.status === 200 && response.ok && !String(url).includes('/rate_limit')) {
     cache.set(cacheKey, {
       expiresAt: now + GITHUB_RESPONSE_CACHE_TTL_MS,
