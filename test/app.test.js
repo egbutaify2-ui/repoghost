@@ -763,16 +763,31 @@ test('serves account Q&A and reuses cached evidence for follow-up questions', as
 });
 
 
-test('serves the account Q&A frontend for both account discovery and direct repository investigations', async (t) => {
+test('serves username-only GitHub search with repository evidence and account chat', async (t) => {
   const server = createServer({ logger: { error() {} } });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
-  const response = await fetch('http://127.0.0.1:' + server.address().port + '/app.js');
-  assert.equal(response.status, 200);
-  const frontend = await response.text();
+  const root = 'http://127.0.0.1:' + server.address().port;
+  const scriptResponse = await fetch(root + '/app.js');
+  assert.equal(scriptResponse.status, 200);
+  const frontend = await scriptResponse.text();
   assert.match(frontend, /function renderAccountChatPanel\(accountLogin\)/);
-  assert.match(frontend, /attachAccountChat\(\{ login: ownerLogin \}\)/);
+  assert.match(frontend, /function inspectRepositoryInline\(repositoryUrl, button\)/);
+  assert.match(frontend, /renderAccountChatPanel\(account\.login\)/);
   assert.match(frontend, /\/api\/account\/ask/);
+  assert.match(frontend, /\/api\/investigate/);
+  assert.match(frontend, /data-username/);
+  assert.doesNotMatch(frontend, /repository-url/);
+  assert.doesNotMatch(frontend, /data-entry-mode/);
+
+  const homeResponse = await fetch(root + '/');
+  assert.equal(homeResponse.status, 200);
+  const page = await homeResponse.text();
+  assert.match(page, /id="github-username"/);
+  assert.match(page, /data-username="expressjs"/);
+  assert.match(page, /data-username="nodejs"/);
+  assert.doesNotMatch(page, /id="repository-url"/);
+  assert.doesNotMatch(page, /Repository URL/);
 });
 
 test('parses a fenced JSON response if the provider wraps it in a fence', () => {
