@@ -311,7 +311,6 @@ function showRepositoryDiscovery(discovery) {
     }
   });
 }
-}
 
 function renderAnalysis(evidence, analysis) {
   const score = Math.max(0, Math.min(100, Math.round(analysis.health.score)));
