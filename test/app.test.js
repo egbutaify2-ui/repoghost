@@ -635,6 +635,57 @@ test('does not fabricate account answers when AI is not configured', async () =>
   assert.equal(result.status.code, 'AI_NOT_CONFIGURED');
 });
 
+test('answers contributor and star questions from evidence through the account API', async (t) => {
+  const discovery = accountDiscoveryFixture();
+  let contributorCollectionCalls = 0;
+  const server = createServer({
+    logger: { error() {} },
+    discoverRepositories: async () => discovery,
+    collectAccountQuestionEvidence: async (value) => buildAccountQuestionSummary(value),
+    collectAccountContributorEvidence: async (evidence) => {
+      contributorCollectionCalls += 1;
+      evidence.contributorSummary = {
+        scope: 'one sampled repository',
+        repositories: [{
+          sourceId: 'account-contributors-1',
+          fullName: 'acme/engine',
+          returnedContributorCount: 2,
+          contributorCountIsExact: true,
+          atLeastCount: null,
+          truncated: false,
+        }],
+        distinctAccountsFoundInSample: 2,
+        contributorLogins: ['dev-one', 'dev-two'],
+        repositoryCountSampled: 1,
+        completeForSampledRepositories: true,
+        isAccountWideTotal: false,
+      };
+      evidence.sources.push({
+        id: 'account-contributors-1',
+        type: 'contributors',
+        title: 'Contributors · acme/engine',
+        url: 'https://github.com/acme/engine/graphs/contributors',
+      });
+      return evidence;
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'acme', question: 'How many contributors? And how many stars?' }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.status.code, 'AI_READY');
+  assert.match(body.answer, /48 stars/);
+  assert.match(body.answer, /2 distinct contributor accounts/);
+  assert.match(body.answer, /not the total number of unique contributors/);
+  assert.equal(contributorCollectionCalls, 1);
+  assert.ok(body.citations.some((source) => source.url === 'https://github.com/acme/engine/graphs/contributors'));
+});
+
 test('serves account Q&A and reuses cached evidence for follow-up questions', async (t) => {
   const discovery = accountDiscoveryFixture();
   let discoveryCalls = 0;
