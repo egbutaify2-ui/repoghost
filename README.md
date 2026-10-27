@@ -53,7 +53,7 @@ The MVP uses plain JavaScript deliberately: the connected development environmen
 
 ## Open-weight model and open innovation
 
-The default model setting uses OpenRouter's `openrouter/free` router, which selects from currently available free compatible models. `OPENROUTER_MODEL` can override that setting, and the account and repository analysis paths have bounded fallback behavior for model-routing failures. Free-model availability and provider limits can change; a free endpoint is not a service-level guarantee.
+RepoGhost defaults to the explicit free endpoint `google/gemma-4-26b-a4b-it:free` (Gemma 4 26B A4B IT), an open-weight model released under Apache 2.0. The configured model ID is used for both repository analysis and account Q&A. If that model is unavailable, RepoGhost reports the error instead of silently switching to a different model. Account Q&A retries JSON and then cited plain-text output when needed, but both attempts use the same configured model. OpenRouter can still route that model to an available provider; it does not mean the application changes to a different model family.
 
 Why open innovation matters to RepoGhost:
 
@@ -71,7 +71,7 @@ Copy `.env.example` to `.env` for a local run, or configure the same values in t
 | Variable | Required | Purpose |
 |---|---|---|
 | `OPENROUTER_API_KEY` | For AI analysis | Server-side key from [OpenRouter API Keys](https://openrouter.ai/keys). Leave unset to use the repository-evidence view without generating an AI answer. |
-| `OPENROUTER_MODEL` | No | Model ID. Default: `google/gemma-4-26b-a4b-it:free`. Do not silently replace it with a closed model. |
+| `OPENROUTER_MODEL` | No | Model ID. Default: `google/gemma-4-26b-a4b-it:free`. RepoGhost does not silently switch to a different model if this one is unavailable. |
 | `GITHUB_TOKEN` | Recommended | Server-side token for authenticated public GitHub API requests and a higher request allowance. Never expose it in frontend code. |
 | `APP_URL` | No | Public URL sent as inference-provider attribution. Set this to the deployed domain. |
 | `PORT` | Usually set by host | HTTP listening port; defaults to `3000`. |
