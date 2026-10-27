@@ -510,6 +510,53 @@ test('answers account questions through the configured open-weight model with a 
   assert.equal(result.status.code, 'AI_READY');
 });
 
+test('retries account Q&A once in JSON mode when a free model returns prose', async () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  const requestBodies = [];
+  let call = 0;
+  const result = await answerAccountQuestion(evidence, 'Do you think I can hire him?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: 'openrouter/free' },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async (_input, options) => {
+      const body = JSON.parse(options.body);
+      requestBodies.push(body);
+      call += 1;
+      if (call === 1) {
+        return responseJson({ model: 'free-model-first', choices: [{ message: { content: 'You should review the person carefully before making a hiring decision.' } }] });
+      }
+      return responseJson({ model: 'free-model-retry', choices: [{ message: { content: JSON.stringify({
+        answer: 'The public repository provides a limited technical signal, but it cannot establish overall hiring suitability. Review code quality and test the candidate with a role-relevant task.',
+        sourceIds: ['repo-1'],
+        uncertainty: ['The supplied public GitHub evidence cannot establish communication, reliability, availability, or performance in your specific role.'],
+      }) } }] });
+    },
+  });
+  assert.equal(call, 2);
+  assert.equal(requestBodies[0].response_format.type, 'json_schema');
+  assert.equal(requestBodies[1].response_format.type, 'json_object');
+  assert.deepEqual(requestBodies[0].plugins, [{ id: 'response-healing' }]);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.model, 'free-model-retry');
+  assert.match(result.answer, /cannot establish overall hiring suitability/);
+  assert.equal(result.citations[0].url, 'https://github.com/acme/engine');
+});
+
+test('does not invent an account answer when both structured and JSON-mode replies are invalid', async () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  let calls = 0;
+  const result = await answerAccountQuestion(evidence, 'Can I hire this person?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: 'openrouter/free' },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async () => {
+      calls += 1;
+      return responseJson({ choices: [{ message: { content: 'I am unable to provide a structured answer.' } }] });
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.answer, null);
+  assert.equal(result.status.code, 'AI_INVALID_OUTPUT');
+});
+
 test('does not fabricate account answers when AI is not configured', async () => {
   let called = false;
   const result = await answerAccountQuestion(buildAccountQuestionSummary(accountDiscoveryFixture()), 'What does the account work on?', {
