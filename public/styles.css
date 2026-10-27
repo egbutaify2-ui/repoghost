@@ -183,6 +183,43 @@ h1 { margin-bottom: 18px; font-size: clamp(44px, 5.3vw, 70px); line-height: 1.03
 .footer-right { color: #4b5967; font-size: 8px; text-align: right; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 [hidden] { display: none !important; }
+
+.entry-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 15px; }
+.entry-tab { border: 1px solid #2d3945; background: #101720; color: #78889a; padding: 9px 12px; font: 10px var(--mono); transition: color .15s, border-color .15s, background .15s; }
+.entry-tab:hover { color: #cbd7e2; border-color: #516456; }
+.entry-tab[aria-pressed="true"] { color: var(--mint); border-color: #476858; background: #14221c; box-shadow: inset 0 -2px 0 var(--mint); }
+.repository-discovery { border: 1px solid #293641; background: #0e141b; margin-bottom: 16px; padding: 20px; }
+.discovery-account { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 13px; padding-bottom: 18px; border-bottom: 1px solid #26313c; }
+.discovery-account-mark { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #355041; background: #13231c; color: var(--mint); font: 10px var(--mono); }
+.discovery-account-copy .card-kicker { margin-bottom: 6px; }
+.discovery-account-copy h3 { font-size: 15px; margin: 0 0 4px; font-weight: 600; overflow-wrap: anywhere; }
+.discovery-account-copy h3 a { color: #dbe5ed; text-decoration: none; }
+.discovery-account-copy h3 a:hover { color: var(--mint); }
+.discovery-account-copy p { color: #8797a8; font-size: 11px; line-height: 1.65; margin: 0; }
+.discovery-account-stats { display: grid; justify-items: end; gap: 3px; }
+.discovery-account-stats strong { color: #dce7ef; font-size: 16px; font-weight: 550; }
+.discovery-account-stats span { color: #718193; font: 9px var(--mono); text-transform: uppercase; }
+.repository-picker-toolbar { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; }
+.repository-search-wrap { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; border: 1px solid #303c48; background: #090e13; color: var(--mint); padding: 0 11px; }
+.repository-search-wrap > span:not(.sr-only) { font-size: 19px; }
+.repository-search-wrap input { min-width: 0; width: 100%; height: 38px; border: 0; outline: 0; background: transparent; color: #dce4ed; font: 11px var(--mono); }
+.repository-search-wrap input::placeholder { color: #5c6b7a; }
+.repository-sort-wrap { display: flex; align-items: center; gap: 8px; color: #718193; font: 9px var(--mono); text-transform: uppercase; }
+.repository-sort-wrap select { border: 1px solid #303c48; background: #101720; color: #c1cedb; padding: 10px 8px; font: 10px var(--mono); max-width: 170px; }
+.repository-result-count { margin: 0 0 4px; color: #637487; font: 9px var(--mono); }
+.repository-list { display: grid; }
+.discovered-repo { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 0; border-top: 1px solid #222d38; }
+.discovered-repo-main { min-width: 0; flex: 1; }
+.discovered-repo-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.discovered-repo-title { color: #d6e1ea; font: 12px var(--mono); text-decoration: none; overflow-wrap: anywhere; }
+.discovered-repo-title:hover { color: var(--mint); }
+.discovered-repo-title span { color: #718393; }
+.discovered-repo-description { color: #8494a5; font-size: 11px; line-height: 1.65; margin: 5px 0 7px; overflow-wrap: anywhere; }
+.discovered-repo-meta { display: flex; flex-wrap: wrap; gap: 7px 13px; color: #647588; font: 9px var(--mono); }
+.repo-investigate-button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 10px; border: 1px solid #456452; background: #12221b; color: var(--mint); padding: 10px 12px; font-size: 10px; transition: background .15s, border-color .15s; }
+.repo-investigate-button:hover { background: #1a3025; border-color: #85bd9f; }
+.discovery-limit-note { margin: 12px 0 0; color: #a18d6c; border-top: 1px solid #3a3328; padding-top: 10px; font-size: 10px; line-height: 1.6; }
+
 @media (max-width: 900px) {
   .site-shell { width: min(100% - 36px, 760px); }
   .hero { grid-template-columns: 1.1fr .9fr; min-height: 390px; }
@@ -225,6 +262,17 @@ h1 { margin-bottom: 18px; font-size: clamp(44px, 5.3vw, 70px); line-height: 1.03
   .keyboard-hint { margin-top: 5px; }
   .examples-row { gap: 8px; }
   .examples-note { width: 100%; margin-left: 0; line-height: 1.6; }
+  .entry-tabs { gap: 6px; }
+  .entry-tab { flex: 1; padding: 9px 7px; font-size: 9px; }
+  .repository-discovery { padding: 15px 13px; }
+  .discovery-account { grid-template-columns: 36px minmax(0, 1fr); gap: 10px; }
+  .discovery-account-mark { width: 36px; height: 36px; }
+  .discovery-account-stats { grid-column: 2; justify-items: start; display: flex; align-items: baseline; gap: 6px; }
+  .repository-picker-toolbar { align-items: stretch; flex-direction: column; }
+  .repository-sort-wrap { justify-content: space-between; }
+  .repository-sort-wrap select { flex: 1; max-width: none; }
+  .discovered-repo { align-items: stretch; flex-direction: column; gap: 10px; }
+  .repo-investigate-button { align-self: flex-start; }
   .method-section { padding-top: 48px; }
   .method-heading { display: block; }
   .method-heading h2 { font-size: 33px; }
