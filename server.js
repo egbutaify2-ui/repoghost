@@ -413,6 +413,15 @@ async function analyzeEvidence(evidence, options = {}) {
     if (error && error.name === 'AbortError') {
       return { analysis: null, status: { code: 'AI_TIMEOUT', message: 'The model took too long to respond. Repository evidence is still available; retry the analysis later.' } };
     }
+    // Log only bounded network error metadata for deployment diagnostics. Never log API keys or request headers.
+    const cause = error && error.cause;
+    console.error('[RepoGhost] OpenRouter request failed', {
+      name: error && typeof error.name === 'string' ? error.name.slice(0, 80) : 'UnknownError',
+      code: cause && typeof cause.code === 'string' ? cause.code.slice(0, 80) : undefined,
+      causeName: cause && typeof cause.name === 'string' ? cause.name.slice(0, 80) : undefined,
+      causeMessage: cause && typeof cause.message === 'string' ? cause.message.slice(0, 200) : undefined,
+      message: error && typeof error.message === 'string' ? error.message.slice(0, 200) : undefined,
+    });
     return { analysis: null, status: { code: 'AI_UNAVAILABLE', message: 'The open-weight model provider could not be reached. No AI response has been fabricated.' } };
   } finally {
     clearTimeout(timer);
