@@ -197,7 +197,7 @@ test('builds an OpenRouter-compatible request and validates mocked model output'
   });
   assert.equal(authHeader, 'Bearer test-secret');
   assert.equal(requestHeaders['X-Title'], 'RepoGhost - Evidence-backed project archaeology');
-  assert.ok(Object.values(requestHeaders).every((value) => /^[\\x00-\\x7F]*$/.test(value)), 'HTTP header values must be ASCII-safe');
+  assert.ok(Object.values(requestHeaders).every((value) => [...value].every((character) => character.codePointAt(0) <= 0x7f)), 'HTTP header values must be ASCII-safe');
   assert.equal(requestBody.model, DEFAULT_MODEL);
   assert.match(requestBody.messages[0].content, /UNTRUSTED DATA/);
   assert.match(requestBody.messages[1].content, /README/);
