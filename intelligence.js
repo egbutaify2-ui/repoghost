@@ -391,11 +391,20 @@ function buildRepositoryHealth(evidence) {
   const cutoff = Date.now() - 90 * 86400000;
   const staleIssues = issues.filter((issue) => issue && issue.state === 'open' && issue.updatedAt && Date.parse(issue.updatedAt) < cutoff);
   if (staleIssues.length) {
-    signals.push({ label: 'Older open issues in sample', kind: 'observed', detail: String(staleIssues.length) + ' of ' + issues.length + ' sampled open issues have not been updated in more than 90 days.', sourceIds: staleIssues.slice(0, 4).map((issue) => 'issue-' + issue.number) });
+    signals.push({ label: 'Older open issues in sample', kind: 'observed', detail: String(staleIssues.length) + ' of ' + issues.length + ' sampled open issues have not been updated in more than 90 days.', sourceIds: staleIssues.slice(0, 4).map((issue) => sources.some((source) => source.id === 'issue-' + issue.number) ? 'issue-' + issue.number : repoSource) });
   } else if (issues.length) {
     signals.push({ label: 'Sampled open issues', kind: 'observed', detail: 'No issue in the current sample met the 90-day no-update rule. This describes only the sampled issues.', sourceIds: issues.slice(0, 3).map((issue) => 'issue-' + issue.number) });
   } else {
     signals.push({ label: 'No open issues returned', kind: 'observed', detail: 'The current GitHub issue request returned no open issue records. No backlog pattern can be inferred from this snapshot.', sourceIds: [repoSource] });
+  }
+  const unansweredIssues = issues.filter((issue) => issue && Number(issue.comments || 0) === 0);
+  if (unansweredIssues.length) {
+    signals.push({
+      label: 'Open issues with no comments in sample',
+      kind: 'observed',
+      detail: String(unansweredIssues.length) + ' sampled open issue(s) report zero comments. This is a useful triage signal, not proof that maintainers ignored them.',
+      sourceIds: unansweredIssues.slice(0, 4).map((issue) => sources.some((source) => source.id === 'issue-' + issue.number) ? 'issue-' + issue.number : repoSource),
+    });
   }
 
   if (!readme) {
@@ -482,13 +491,14 @@ function buildRepositoryHealth(evidence) {
     sample: { commitCount: commits.length, openIssueCount: issues.length, openIssueSampleLimit: 10, readmeAvailable: Boolean(readme), releaseAvailable: Boolean(release), note: 'This is a bounded public snapshot, not a complete repository audit.' },
     signals,
     revivalPlan: cleanPlan,
-    contributionOpportunities: issues.slice().sort((a, b) => (Date.parse(a.updatedAt || '') || 0) - (Date.parse(b.updatedAt || '') || 0)).slice(0, 5).map((issue) => ({
-      title: 'Investigate issue #' + issue.number + ': ' + cleanText(issue.title, 180),
-      detail: 'Public issue updated ' + (issue.updatedAt ? issue.updatedAt.slice(0, 10) : 'on an unknown date') + '; ' + issue.comments + ' comment(s) reported. Verify current state and reproducibility before contributing.',
-      url: issue.url,
-      sourceIds: ['issue-' + issue.number],
-      complexity: 'Not estimated; the reproduction steps and implementation scope have not been inspected.',
-    })),
+    contributionOpportunities: issues.filter((issue) => issue && issue.url && sources.some((source) => source.id === 'issue-' + issue.number))
+      .slice().sort((a, b) => (Date.parse(a.updatedAt || '') || 0) - (Date.parse(b.updatedAt || '') || 0)).slice(0, 5).map((issue) => ({
+        title: 'Investigate issue #' + issue.number + ': ' + cleanText(issue.title, 180),
+        detail: 'Public issue updated ' + (issue.updatedAt ? issue.updatedAt.slice(0, 10) : 'on an unknown date') + '; ' + issue.comments + ' comment(s) reported. Verify current state and reproducibility before contributing.',
+        url: issue.url,
+        sourceIds: ['issue-' + issue.number],
+        complexity: 'Not estimated; the reproduction steps and implementation scope have not been inspected.',
+      })),
     sources,
     limitations: [
       'Signals describe only public metadata and bounded samples returned by GitHub.',
