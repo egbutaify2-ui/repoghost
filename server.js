@@ -76,12 +76,15 @@ function safeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function githubHeaders(accept = 'application/vnd.github+json') {
-  return {
+function githubHeaders(accept = 'application/vnd.github+json', env = process.env) {
+  const headers = {
     Accept: accept,
     'X-GitHub-Api-Version': '2022-11-28',
     'User-Agent': 'RepoGhost/0.1 (evidence-backed repository archaeology)',
   };
+  const token = typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '';
+  if (token) headers.Authorization = 'token ' + token;
+  return headers;
 }
 
 async function fetchResponse(fetchImpl, url, options = {}) {
@@ -531,6 +534,7 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_MODEL,
+  githubHeaders,
   HttpError,
   ModelResponseError,
   SYSTEM_PROMPT,
