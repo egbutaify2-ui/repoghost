@@ -372,7 +372,7 @@ async function analyzeEvidence(evidence, options = {}) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': env.APP_URL || 'https://repoghost.app',
-        'X-Title': 'RepoGhost — Evidence-backed project archaeology',
+        'X-Title': 'RepoGhost - Evidence-backed project archaeology',
       },
       signal: controller.signal,
       body: JSON.stringify({
