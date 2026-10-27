@@ -617,6 +617,13 @@ test('handles thank-you, greetings, acknowledgements, and help without invoking 
   const thanks = answerSimpleAccountConversation('thank you', 'acme');
   assert.equal(thanks.status.code, 'CONVERSATION');
   assert.match(thanks.answer, /welcome/i);
+  const combinedThanks = answerSimpleAccountConversation('okay thank you', 'acme');
+  assert.equal(combinedThanks.status.code, 'CONVERSATION');
+  assert.match(combinedThanks.answer, /welcome/i);
+  const welcomeCorrection = answerSimpleAccountConversation('you cant say you are wlcm or something?', 'acme');
+  assert.equal(welcomeCorrection.status.code, 'CONVERSATION');
+  assert.match(welcomeCorrection.answer, /should have said/i);
+  assert.match(welcomeCorrection.answer, /welcome/i);
   assert.deepEqual(thanks.citations, []);
   assert.equal(answerSimpleAccountConversation('hello', 'acme').status.code, 'CONVERSATION');
   assert.match(answerSimpleAccountConversation('what can you do', 'acme').answer, /public repositories/i);
@@ -799,7 +806,7 @@ test('does not fabricate account answers when AI is not configured', async () =>
   assert.equal(result.status.code, 'AI_NOT_CONFIGURED');
 });
 
-test('returns thank-you replies before account discovery, evidence collection, or model calls', async (t) => {
+test('routes natural thanks and welcome corrections before GitHub evidence or model calls', async (t) => {
   let discoveryCalls = 0;
   let evidenceCalls = 0;
   let modelCalls = 0;
@@ -811,21 +818,22 @@ test('returns thank-you replies before account discovery, evidence collection, o
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
-  const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'acme', question: 'thank you' }),
-  });
-  assert.equal(response.status, 200);
-  const body = await response.json();
-  assert.match(body.answer, /welcome/i);
-  assert.equal(body.status.code, 'CONVERSATION');
-  assert.deepEqual(body.citations, []);
+  for (const question of ['thank you', 'okay thank you', 'you cant say you are wlcm or something?']) {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'acme', question }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.match(body.answer, /welcome/i);
+    assert.equal(body.status.code, 'CONVERSATION');
+    assert.deepEqual(body.citations, []);
+  }
   assert.equal(discoveryCalls, 0);
   assert.equal(evidenceCalls, 0);
   assert.equal(modelCalls, 0);
 });
-
 test('answers contributor and star questions from evidence through the account API', async (t) => {
   const discovery = accountDiscoveryFixture();
   let contributorCollectionCalls = 0;

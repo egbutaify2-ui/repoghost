@@ -776,7 +776,8 @@ async function readOpenRouterErrorMessage(response) {
 function answerSimpleAccountConversation(question, username = '') {
   const normalized = String(question || '').trim().toLowerCase()
     .replace(/[.!?,…]+$/g, '').replace(/\s+/g, ' ');
-  const thanks = /^(?:thanks?(?: a lot| so much| again| for that| for explaining| for your help)?|thank you(?: so much| for that| for explaining| for your help)?|thx|ty|much appreciated|i appreciate it)(?:,? (?:bro|man|mate|boss|my guy))?$/i;
+  const thanks = /^(?:(?:ok|okay|alright|well)[, ]+)?(?:thanks?(?: a lot| so much| again| for that| for explaining| for your help)?|thank you(?: so much| for that| for explaining| for your help)?|thx|ty|much appreciated|i appreciate it)(?:,? (?:bro|man|mate|boss|my guy))?$/i;
+  const welcomeCorrection = /\b(?:you|u)\s+(?:can'?t|cannot|couldn'?t|shouldn't|should)\s+(?:just\s+)?say\b.*\b(?:welcome|wlcm|thanks?|thank you)\b|\b(?:can't you|cannot you|couldn't you|why didn't you)\b.*\b(?:welcome|wlcm|thanks?|thank you)\b/i;
   const greeting = /^(?:hi|hello|hey|yo|good morning|good afternoon|good evening|how are you|what's up)(?: there| bro| man| mate)?$/i;
   const acknowledgement = /^(?:ok|okay|got it|cool|nice|great|alright|understood|noted|sounds good|perfect)(?: thanks)?$/i;
   const help = /^(?:help|what can you do|what can i ask|what can i ask you|how does this work|what should i ask)$/i;
@@ -784,6 +785,8 @@ function answerSimpleAccountConversation(question, username = '') {
   const handle = username ? '@' + username : 'this account';
   if (thanks.test(normalized)) {
     answer = 'You’re welcome! Ask me another question whenever you’re ready.';
+  } else if (welcomeCorrection.test(normalized)) {
+    answer = 'You’re right — I should have said “You’re welcome!” Thanks for pointing that out. I’ll keep the conversation natural while keeping factual GitHub answers grounded in evidence.';
   } else if (greeting.test(normalized)) {
     answer = 'Hey! I’m ready to help you explore public GitHub evidence. Ask about repositories, languages, stars, activity, sampled commits, or what the evidence can and cannot tell you.';
   } else if (acknowledgement.test(normalized)) {
