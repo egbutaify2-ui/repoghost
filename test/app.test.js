@@ -565,6 +565,19 @@ test('serves account Q&A and reuses cached evidence for follow-up questions', as
   assert.equal((await invalidQuestion.json()).error.code, 'INVALID_ACCOUNT_QUESTION');
 });
 
+
+test('serves the account Q&A frontend for both account discovery and direct repository investigations', async (t) => {
+  const server = createServer({ logger: { error() {} } });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const response = await fetch('http://127.0.0.1:' + server.address().port + '/app.js');
+  assert.equal(response.status, 200);
+  const frontend = await response.text();
+  assert.match(frontend, /function renderAccountChatPanel\(accountLogin\)/);
+  assert.match(frontend, /attachAccountChat\(\{ login: ownerLogin \}\)/);
+  assert.match(frontend, /\/api\/account\/ask/);
+});
+
 test('parses a fenced JSON response if the provider wraps it in a fence', () => {
   assert.deepEqual(parseModelJson('```json\n{"hello":"world"}\n```'), { hello: 'world' });
 });
