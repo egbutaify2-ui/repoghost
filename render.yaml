@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: repoghost
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm test
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENROUTER_MODEL
+        value: google/gemma-4-26b-a4b-it:free
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
