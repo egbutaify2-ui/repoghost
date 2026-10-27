@@ -59,6 +59,10 @@
           <div><span class="section-index">01 / ENTRY POINT</span><h2 id="investigate-heading">Start an investigation</h2></div>
           <span class="panel-code">GH / PUBLIC REPOS ONLY</span>
         </div>
+        <div class="entry-tabs" role="group" aria-label="Choose investigation entry point">
+          <button type="button" class="entry-tab" data-entry-mode="repository" aria-pressed="true">Repository URL</button>
+          <button type="button" class="entry-tab" data-entry-mode="account" aria-pressed="false">GitHub username / org</button>
+        </div>
         <form id="investigate-form" novalidate>
           <label class="sr-only" for="repository-url">Public GitHub repository URL</label>
           <div class="input-wrap">
@@ -69,7 +73,7 @@
           <div class="input-meta"><p id="url-help">Paste a public GitHub URL. No sign-in required.</p><p class="keyboard-hint">READ-ONLY <span>·</span> NO CLONING <span>·</span> NO CODE EXECUTION</p></div>
           <p id="form-error" class="form-error" role="alert" hidden></p>
         </form>
-        <div class="examples-row">
+        <div class="examples-row" id="examples-row">
           <span class="examples-label">QUICK LOOK</span>
           <button type="button" class="example-repo" data-repo="https://github.com/expressjs/express">expressjs / express <span>↗</span></button>
           <button type="button" class="example-repo" data-repo="https://github.com/nodejs/undici">nodejs / undici <span>↗</span></button>
