@@ -1346,7 +1346,7 @@ async function analyzeEvidence(evidence, options = {}) {
             schema: buildAnalysisSchema(evidence),
           },
         },
-        // The free router should select a provider that supports the requested structured output.
+        // Keep provider routing constrained to the configured Gemma model endpoint.
         provider: { require_parameters: true },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
