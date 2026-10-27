@@ -8,6 +8,7 @@ const {
   HttpError,
   SYSTEM_PROMPT,
   analyzeEvidence,
+  buildAnalysisSchema,
   createServer,
   getRepositoryEvidence,
   parseGithubRepoUrl,
@@ -199,7 +200,16 @@ test('builds an OpenRouter-compatible request and validates mocked model output'
   assert.equal(requestHeaders['X-Title'], 'RepoGhost - Evidence-backed project archaeology');
   assert.ok(Object.values(requestHeaders).every((value) => [...value].every((character) => character.codePointAt(0) <= 0x7f)), 'HTTP header values must be ASCII-safe');
   assert.equal(requestBody.model, DEFAULT_MODEL);
-  assert.deepEqual(requestBody.response_format, { type: 'json_object' });
+  assert.equal(requestBody.response_format.type, 'json_schema');
+  assert.equal(requestBody.response_format.json_schema.name, 'repoghost_analysis');
+  assert.equal(requestBody.response_format.json_schema.strict, true);
+  const schema = requestBody.response_format.json_schema.schema;
+  assert.equal(schema.properties.recommendations.minItems, 3);
+  assert.equal(schema.properties.recommendations.maxItems, 3);
+  assert.deepEqual(schema.properties.recommendations.items.properties.priority.enum, ['P1', 'P2', 'P3']);
+  assert.ok(schema.properties.recommendations.items.properties.sourceIds.items.enum.includes('issue-5'));
+  assert.equal(requestBody.provider.require_parameters, true);
+  assert.deepEqual(buildAnalysisSchema(evidence), schema);
   assert.match(requestBody.messages[0].content, /UNTRUSTED DATA/);
   assert.match(requestBody.messages[1].content, /README/);
   assert.equal(result.status.code, 'AI_READY');
