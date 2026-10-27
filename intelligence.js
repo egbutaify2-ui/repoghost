@@ -432,7 +432,8 @@ function buildRepositoryHealth(evidence) {
     signals.push({ label: 'Recent commits sampled', kind: 'observed', detail: String(commits.length) + ' recent commit record(s) inspected; sample size is bounded and author names do not prove account ownership of every change.', sourceIds: commits.slice(0, 4).map((commit) => 'commit-' + commit.sha) });
   }
 
-  const firstIssue = staleIssues[0] || [...issues].sort((a, b) => (Date.parse(a.updatedAt || '') || 0) - (Date.parse(b.updatedAt || '') || 0))[0];
+  const oldestIssues = [...issues].sort((a, b) => (Date.parse(a.updatedAt || '') || 0) - (Date.parse(b.updatedAt || '') || 0));
+  const firstIssue = [...staleIssues, ...oldestIssues].find((issue) => sources.some((source) => source.id === 'issue-' + issue.number)) || null;
   const readmeSource = readme ? sourceFor('readme') : repoSource;
   const plan = [];
   if (repository.archived) {
