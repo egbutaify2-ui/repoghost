@@ -10,7 +10,9 @@ const {
   analyzeEvidence,
   buildAnalysisSchema,
   createServer,
+  discoverRepositories,
   getRepositoryEvidence,
+  parseGithubAccountName,
   parseGithubRepoUrl,
   parseModelJson,
   validateAnalysis,
@@ -143,6 +145,64 @@ test('accepts a standard GitHub repository URL', () => {
     owner: 'acme', repo: 'engine', fullName: 'acme/engine', url: 'https://github.com/acme/engine',
   });
   assert.equal(parseGithubRepoUrl('https://github.com/acme/engine.git').fullName, 'acme/engine');
+});
+
+
+test('accepts GitHub usernames, @handles, and single-profile URLs for repository discovery', () => {
+  assert.equal(parseGithubAccountName('octocat'), 'octocat');
+  assert.equal(parseGithubAccountName('@expressjs'), 'expressjs');
+  assert.equal(parseGithubAccountName('https://github.com/nodejs/'), 'nodejs');
+});
+
+test('rejects repository URLs and malformed GitHub account names during discovery validation', () => {
+  const invalid = [
+    '', 'not a username', '-starts-with-hyphen', 'ends-with-hyphen-', 'https://github.com/acme/engine',
+    'https://github.com.evil.test/octocat', 'http://github.com/octocat', 'https://user@github.com/octocat',
+  ];
+  for (const value of invalid) assert.throws(() => parseGithubAccountName(value), HttpError, value);
+});
+
+test('discovers public repositories for a GitHub user and normalizes repository metadata', async () => {
+  const requests = [];
+  const fetchImpl = async (input) => {
+    const url = new URL(String(input));
+    requests.push(url.pathname);
+    if (url.pathname === '/users/acme') {
+      return responseJson({ login: 'acme', type: 'User', name: 'Acme Team', bio: 'Tools for builders', public_repos: 2, followers: 91 });
+    }
+    if (url.pathname === '/users/acme/repos') return responseJson([
+      { id: 1, name: 'engine', full_name: 'acme/engine', private: false, description: 'A small engine', language: 'TypeScript', stargazers_count: 48, forks_count: 7, open_issues_count: 2, pushed_at: '2026-10-01T12:00:00Z', updated_at: '2026-10-02T12:00:00Z', created_at: '2021-01-05T12:00:00Z', archived: false, fork: false, default_branch: 'main', license: { name: 'MIT License' } },
+      { id: 2, name: 'internal', full_name: 'acme/internal', private: true },
+    ]);
+    throw new Error(`Unexpected mocked URL: ${url.href}`);
+  };
+  const discovery = await discoverRepositories('acme', { fetchImpl, githubApiBaseUrl: 'https://api.github.test' });
+  assert.equal(discovery.account.login, 'acme');
+  assert.equal(discovery.account.type, 'User');
+  assert.equal(discovery.account.publicRepos, 2);
+  assert.equal(discovery.returnedCount, 1, 'private repositories must never be returned');
+  assert.equal(discovery.repositories[0].fullName, 'acme/engine');
+  assert.equal(discovery.repositories[0].url, 'https://github.com/acme/engine');
+  assert.equal(discovery.repositories[0].stars, 48);
+  assert.equal(discovery.repositories[0].pushedAt, '2026-10-01T12:00:00.000Z');
+  assert.deepEqual(requests, ['/users/acme', '/users/acme/repos']);
+});
+
+test('discovers public repositories for a GitHub organization', async () => {
+  const requests = [];
+  const fetchImpl = async (input) => {
+    const url = new URL(String(input));
+    requests.push(url.pathname);
+    if (url.pathname === '/users/expressjs') return responseJson({ login: 'expressjs', type: 'Organization', public_repos: 12 });
+    if (url.pathname === '/orgs/expressjs/repos') return responseJson([
+      { id: 3, name: 'express', full_name: 'expressjs/express', private: false, language: 'JavaScript', stargazers_count: 1000, pushed_at: '2026-10-01T12:00:00Z' },
+    ]);
+    throw new Error(`Unexpected mocked URL: ${url.href}`);
+  };
+  const discovery = await discoverRepositories('expressjs', { fetchImpl, githubApiBaseUrl: 'https://api.github.test' });
+  assert.equal(discovery.account.type, 'Organization');
+  assert.equal(discovery.repositories[0].fullName, 'expressjs/express');
+  assert.deepEqual(requests, ['/users/expressjs', '/orgs/expressjs/repos']);
 });
 
 test('rejects malformed, unsupported, nested, credential-bearing, and non-HTTPS URLs', () => {
@@ -314,6 +374,32 @@ test('serves health check and rejects unsupported repository URLs on the HTTP en
   });
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).error.code, 'UNSUPPORTED_HOST');
+});
+
+
+test('serves the GitHub repository discovery HTTP endpoint', async (t) => {
+  const server = createServer({
+    logger: { error() {} },
+    discoverRepositories: async (username) => ({
+      account: { login: username, type: 'User', name: null, bio: null, url: `https://github.com/${username}`, publicRepos: 1, followers: 0 },
+      repositories: [{ id: 7, name: 'demo', fullName: `${username}/demo`, url: `https://github.com/${username}/demo`, description: 'Demo repository', language: 'JavaScript', stars: 5, forks: 0, openIssuesCount: 1, pushedAt: null, updatedAt: null, createdAt: null, archived: false, fork: false, defaultBranch: 'main', license: 'MIT License' }],
+      returnedCount: 1,
+      limitReached: false,
+    }),
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const address = server.address();
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/discover`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'octocat' }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.discovery.account.login, 'octocat');
+  assert.equal(body.discovery.repositories[0].fullName, 'octocat/demo');
+  assert.ok(body.requestId);
 });
 
 test('serves the landing page with secure headers', async (t) => {
