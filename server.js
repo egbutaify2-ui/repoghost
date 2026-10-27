@@ -1413,6 +1413,7 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_MODEL,
+  rateLimitMessage,
   githubHeaders,
   HttpError,
   ModelResponseError,
