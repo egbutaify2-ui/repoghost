@@ -182,9 +182,11 @@ test('builds an OpenRouter-compatible request and validates mocked model output'
   const evidence = await getEvidenceFixture();
   let requestBody;
   let authHeader;
+  let requestHeaders;
   const fetchImpl = async (input, options) => {
     assert.equal(String(input), 'https://openrouter.test/api/v1/chat/completions');
     authHeader = options.headers.Authorization;
+    requestHeaders = options.headers;
     requestBody = JSON.parse(options.body);
     return responseJson({ choices: [{ message: { content: JSON.stringify(makeAnalysis(evidence)) } }] });
   };
@@ -194,6 +196,8 @@ test('builds an OpenRouter-compatible request and validates mocked model output'
     env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
   });
   assert.equal(authHeader, 'Bearer test-secret');
+  assert.equal(requestHeaders['X-Title'], 'RepoGhost - Evidence-backed project archaeology');
+  assert.ok(Object.values(requestHeaders).every((value) => /^[\\x00-\\x7F]*$/.test(value)), 'HTTP header values must be ASCII-safe');
   assert.equal(requestBody.model, DEFAULT_MODEL);
   assert.match(requestBody.messages[0].content, /UNTRUSTED DATA/);
   assert.match(requestBody.messages[1].content, /README/);
