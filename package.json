@@ -1,0 +1,15 @@
+{
+  "name": "repoghost",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Evidence-backed AI archaeology for neglected public GitHub repositories.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check public/app.js && node --test"
+  }
+}
