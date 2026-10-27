@@ -1,0 +1,65 @@
+name: Live inference smoke test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server.js'
+      - 'render.yaml'
+      - '.github/workflows/live-inference-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-inference:
+    name: Verify deployed Gemma analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check the deployed model and run a real investigation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://repoghost.onrender.com"
+          expected="google/gemma-4-26b-a4b-it:free"
+
+          for attempt in $(seq 1 8); do
+            health_code="$(curl --silent --show-error --max-time 20 -o /tmp/health.json -w '%{http_code}' "$base/api/health" || true)"
+            if [[ "$health_code" == "200" ]] && jq -e --arg expected "$expected" '.status == "ok" and .aiConfigured == true and .model == $expected' /tmp/health.json >/dev/null; then
+              echo "Health check confirms AI is configured and the pinned model is active."
+              jq '{status, aiConfigured, model}' /tmp/health.json
+              break
+            fi
+
+            echo "Attempt $attempt: health endpoint is not yet ready for the expected model (HTTP $health_code)."
+            if [[ -f /tmp/health.json ]]; then jq '{status, aiConfigured, model}' /tmp/health.json || cat /tmp/health.json; fi
+            if [[ "$attempt" == "8" ]]; then
+              echo "The live health check did not confirm the expected model configuration."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          payload='{"repositoryUrl":"https://github.com/egbutaify2-ui/repoghost"}'
+          for attempt in $(seq 1 8); do
+            code="$(curl --silent --show-error --max-time 40 -o /tmp/analysis.json -w '%{http_code}' -H 'content-type: application/json' -X POST --data "$payload" "$base/api/analyze" || true)"
+            if [[ "$code" == "200" ]] && jq -e '
+              .analysisStatus.code == "AI_READY" and
+              ((.model // "") | startswith("google/gemma-4-26b-a4b-it")) and
+              ((.analysis.recommendations // []) | length == 3)
+            ' /tmp/analysis.json >/dev/null; then
+              echo "Live inference succeeded with the pinned Gemma model and three validated recommendations."
+              jq '{analysisStatus, model, recommendationCount: (.analysis.recommendations | length)}' /tmp/analysis.json
+              exit 0
+            fi
+
+            echo "Attempt $attempt: live inference has not yet produced a validated Gemma report (HTTP $code)."
+            if [[ -f /tmp/analysis.json ]]; then jq '{analysisStatus, model, error}' /tmp/analysis.json || cat /tmp/analysis.json; fi
+            if [[ "$attempt" != "8" ]]; then sleep 10; fi
+          done
+
+          echo "Live RepoGhost inference did not return a validated report from the pinned Gemma model."
+          exit 1
