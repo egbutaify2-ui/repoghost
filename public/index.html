@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0d12">
+  <meta name="description" content="RepoGhost investigates the evidence left behind in neglected public GitHub repositories. Open-weight AI, source-linked findings, and practical revival steps.">
+  <title>RepoGhost — The past leaves a trace</title>
+  <link rel="icon" href="/ghost.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="RepoGhost home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none"><path d="M8 31.5V18.8C8 11.9 13.3 6.5 20 6.5s12 5.4 12 12.3v12.7l-5.1-3.4-3.5 3.4-3.4-3.4-3.5 3.4L12.9 28 8 31.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="15.5" cy="18.5" r="1.4" fill="currentColor"/><circle cx="24.5" cy="18.5" r="1.4" fill="currentColor"/><path d="M16.5 23.5c2.1 1.8 4.9 1.8 7 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </span>
+        <span class="brand-copy"><strong>RepoGhost</strong><small>PROJECT ARCHAEOLOGY</small></span>
+      </a>
+      <div class="topbar-right">
+        <span class="quiet-status"><span class="status-dot"></span> READ-ONLY INVESTIGATION</span>
+        <a class="text-link" href="#method">How it works <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-line"></span> FIELD NOTES / 001 <span class="eyebrow-muted">· THE GHOST IN THE MACHINE</span></div>
+          <h1 id="hero-title">Every repository<br>leaves <span class="headline-accent">traces.</span></h1>
+          <p class="hero-description">Find the story buried in a neglected codebase. RepoGhost connects commit trails, unresolved issues, releases, and documentation to evidence-backed next steps.</p>
+          <div class="proof-row">
+            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Source-linked findings</span>
+            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Facts ≠ hypotheses</span>
+            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> No code execution</span>
+          </div>
+        </div>
+        <div class="ghost-art" aria-hidden="true">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+          <div class="ghost-halo"></div>
+          <svg class="large-ghost" viewBox="0 0 240 270" fill="none">
+            <path d="M43 226V105C43 62.5 75 29 116 29s73 33.5 73 76v121l-30-19-22 19-22-19-22 19-22-19-28 19Z" fill="url(#ghostFill)" stroke="#a2b1c5" stroke-opacity=".65" stroke-width="1.5"/>
+            <path d="M43 188h146" stroke="#c6d0dc" stroke-opacity=".12"/>
+            <ellipse cx="91" cy="107" rx="8" ry="11" fill="#8cf2c0"/><ellipse cx="143" cy="107" rx="8" ry="11" fill="#8cf2c0"/>
+            <path d="M100 143c7 7 19 7 26 0" stroke="#c7d4e5" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="70" cy="76" r="2" fill="#a1f5cb"/><circle cx="167" cy="154" r="2" fill="#a1f5cb"/><circle cx="144" cy="54" r="1.5" fill="#a1f5cb"/>
+            <path d="M26 119h20M181 87h29M177 190h34M20 203h19" stroke="#7892ad" stroke-opacity=".6" stroke-linecap="round"/>
+            <defs><linearGradient id="ghostFill" x1="66" y1="34" x2="179" y2="242" gradientUnits="userSpaceOnUse"><stop stop-color="#17212d"/><stop offset="1" stop-color="#0d1119"/></linearGradient></defs>
+          </svg>
+          <div class="art-caption"><span class="art-caption-dot"></span> NO SIGNAL IS A STORY BY ITSELF.</div>
+          <div class="art-coordinate">40°43' N<br>CODEBASE / UNKNOWN</div>
+        </div>
+      </section>
+
+      <section class="investigate-panel" aria-labelledby="investigate-heading">
+        <div class="panel-heading">
+          <div><span class="section-index">01 / ENTRY POINT</span><h2 id="investigate-heading">Start an investigation</h2></div>
+          <span class="panel-code">GH / PUBLIC REPOS ONLY</span>
+        </div>
+        <form id="investigate-form" novalidate>
+          <label class="sr-only" for="repository-url">Public GitHub repository URL</label>
+          <div class="input-wrap">
+            <span class="input-prefix" aria-hidden="true">⌁</span>
+            <input id="repository-url" name="repositoryUrl" type="url" placeholder="https://github.com/owner/repository" autocomplete="url" spellcheck="false" required aria-describedby="url-help">
+            <button id="investigate-button" type="submit"><span>Investigate repository</span><span class="button-arrow" aria-hidden="true">↗</span></button>
+          </div>
+          <div class="input-meta"><p id="url-help">Paste a public GitHub URL. No sign-in required.</p><p class="keyboard-hint">READ-ONLY <span>·</span> NO CLONING <span>·</span> NO CODE EXECUTION</p></div>
+          <p id="form-error" class="form-error" role="alert" hidden></p>
+        </form>
+        <div class="examples-row">
+          <span class="examples-label">QUICK LOOK</span>
+          <button type="button" class="example-repo" data-repo="https://github.com/expressjs/express">expressjs / express <span>↗</span></button>
+          <button type="button" class="example-repo" data-repo="https://github.com/nodejs/undici">nodejs / undici <span>↗</span></button>
+          <span class="examples-note">Active projects are fine too — activity is evidence, not a verdict.</span>
+        </div>
+      </section>
+
+      <section id="results" class="results-section" aria-live="polite" aria-busy="false" hidden>
+        <div class="results-header">
+          <div><span class="section-index">02 / CASE FILE</span><h2>Investigation results</h2></div>
+          <button type="button" id="clear-results" class="reset-button">Clear case <span aria-hidden="true">↺</span></button>
+        </div>
+        <div id="results-content"></div>
+      </section>
+
+      <section id="method" class="method-section">
+        <div class="method-heading"><span class="section-index">03 / METHOD</span><h2>Not a séance.<br><span>A chain of evidence.</span></h2></div>
+        <div class="method-grid">
+          <article class="method-card"><span class="method-number">A</span><h3>Collect the traces</h3><p>Public repository metadata, README, recent commits, open issues, and release records. Missing records are reported as missing.</p><span class="method-tag">GITHUB REST API</span></article>
+          <article class="method-card"><span class="method-number">B</span><h3>Question the evidence</h3><p>An open-weight model reviews bounded repository text as untrusted data. Embedded instructions are never treated as commands.</p><span class="method-tag">OPEN-WEIGHT AI</span></article>
+          <article class="method-card"><span class="method-number">C</span><h3>Leave a trail</h3><p>Findings link back to original sources. Observations and hypotheses stay separate, so the next maintainer can verify every lead.</p><span class="method-tag">CITATIONS FIRST</span></article>
+        </div>
+      </section>
+
+      <section class="principle-bar">
+        <div class="principle-icon" aria-hidden="true">✳</div><p><strong>Open innovation matters here.</strong> The model is replaceable, inspectable, and can be self-hosted as the project evolves. The investigative rules and evidence map remain under your control.</p><span class="principle-stamp">KEEP THE PAST<br>USEFUL, NOT MYSTICAL.</span>
+      </section>
+    </main>
+    <footer class="footer"><a class="footer-brand" href="/">RepoGhost</a><span>Evidence over intuition. Every time.</span><span class="footer-right">BUILT FOR THE ONES WHO PICK UP THE THREAD.</span></footer>
+  </div>
+</body>
+</html>
