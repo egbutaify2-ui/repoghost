@@ -7,6 +7,12 @@ const formError = document.querySelector('#form-error');
 const resultsSection = document.querySelector('#results');
 const resultsContent = document.querySelector('#results-content');
 const clearResultsButton = document.querySelector('#clear-results');
+const entryModeButtons = [...document.querySelectorAll('[data-entry-mode]')];
+const entryLabel = document.querySelector('label[for="repository-url"]');
+const entryHelp = document.querySelector('#url-help');
+const examplesRow = document.querySelector('#examples-row');
+let entryMode = 'repository';
+let lastDiscovery = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -119,6 +125,77 @@ function renderRelease(evidence) {
   return `<h3>${escapeHtml(release.name)}</h3><p>${escapeHtml(release.tag || 'No tag name returned')} · Published ${escapeHtml(formatDate(release.publishedAt))}</p>${release.draft ? '<span class="pill warn">Draft release</span>' : ''}${release.prerelease ? '<span class="pill warn">Pre-release</span>' : ''}${renderSources(evidence, ['release'])}`;
 }
 
+function renderDiscoveredRepository(repository) {
+  const flags = [
+    repository.archived ? '<span class="pill warn">Archived</span>' : '',
+    repository.fork ? '<span class="pill neutral">Fork</span>' : '',
+  ].filter(Boolean).join('');
+  return `<article class="discovered-repo">
+    <div class="discovered-repo-main">
+      <div class="discovered-repo-heading"><a class="discovered-repo-title" href="${escapeHtml(repository.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(repository.fullName)} <span aria-hidden="true">↗</span></a>${flags}</div>
+      <p class="discovered-repo-description">${escapeHtml(repository.description || 'No public description provided.')}</p>
+      <div class="discovered-repo-meta"><span>${escapeHtml(repository.language || 'Unknown language')}</span><span><span aria-hidden="true">★</span> ${Number(repository.stars || 0).toLocaleString()} stars</span><span>Pushed ${escapeHtml(relativeDate(repository.pushedAt))}</span></div>
+    </div>
+    <button type="button" class="repo-investigate-button" data-investigate-url="${escapeHtml(repository.url)}">Investigate <span aria-hidden="true">↗</span></button>
+  </article>`;
+}
+
+function showRepositoryDiscovery(discovery) {
+  lastDiscovery = discovery;
+  const account = discovery.account || {};
+  const accountTitle = account.name ? `${account.name} · @${account.login}` : `@${account.login}`;
+  resultsContent.innerHTML = `<section class="repository-discovery" aria-label="Discovered public repositories">
+    <div class="discovery-account">
+      <div class="discovery-account-mark" aria-hidden="true">${account.type === 'Organization' ? 'ORG' : 'GH'}</div>
+      <div class="discovery-account-copy"><span class="card-kicker">GITHUB / ACCOUNT FOUND</span><h3><a href="${escapeHtml(account.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(accountTitle)} ↗</a></h3><p>${escapeHtml(account.bio || (account.type === 'Organization' ? 'Public organization repositories' : 'Public repositories owned by this account'))}</p></div>
+      <div class="discovery-account-stats"><strong>${Number(account.publicRepos || discovery.returnedCount || 0).toLocaleString()}</strong><span>public repos</span></div>
+    </div>
+    <div class="repository-picker-toolbar">
+      <label class="repository-search-wrap"><span class="sr-only">Filter repositories</span><span aria-hidden="true">⌕</span><input id="repository-search" type="search" placeholder="Filter by repository, description, or language" autocomplete="off"></label>
+      <label class="repository-sort-wrap"><span>Sort</span><select id="repository-sort" aria-label="Sort repositories"><option value="pushed">Recently pushed</option><option value="stars">Most stars</option><option value="name">Name A–Z</option></select></label>
+    </div>
+    <p class="repository-result-count" id="repository-result-count"></p>
+    <div class="repository-list" id="repository-picker-list"></div>
+    ${discovery.limitReached ? '<p class="discovery-limit-note">Showing the first 100 public repositories, ordered by recent pushes. Narrow the search to find a specific project.</p>' : ''}
+  </section>`;
+
+  const searchInput = resultsContent.querySelector('#repository-search');
+  const sortSelect = resultsContent.querySelector('#repository-sort');
+  const resultCount = resultsContent.querySelector('#repository-result-count');
+  const repositoryList = resultsContent.querySelector('#repository-picker-list');
+
+  function updateRepositoryList() {
+    const query = searchInput.value.trim().toLowerCase();
+    const sort = sortSelect.value;
+    const visible = (discovery.repositories || []).filter((repository) => {
+      const searchable = [repository.fullName, repository.description, repository.language].filter(Boolean).join(' ').toLowerCase();
+      return searchable.includes(query);
+    });
+    visible.sort((left, right) => {
+      if (sort === 'stars') return Number(right.stars || 0) - Number(left.stars || 0);
+      if (sort === 'name') return String(left.fullName).localeCompare(String(right.fullName));
+      return (Date.parse(right.pushedAt || '') || 0) - (Date.parse(left.pushedAt || '') || 0);
+    });
+    resultCount.textContent = `${visible.length.toLocaleString()} of ${(discovery.repositories || []).length.toLocaleString()} repositories`;
+    repositoryList.innerHTML = visible.length
+      ? visible.map(renderDiscoveredRepository).join('')
+      : '<div class="empty-state"><strong>No matching repositories.</strong>Try a different search term.</div>';
+  }
+
+  searchInput.addEventListener('input', updateRepositoryList);
+  sortSelect.addEventListener('change', updateRepositoryList);
+  repositoryList.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-investigate-url]') : null;
+    if (!button) return;
+    const repositoryUrl = button.getAttribute('data-investigate-url');
+    if (!repositoryUrl) return;
+    urlInput.value = repositoryUrl;
+    setEntryMode('repository');
+    investigate(repositoryUrl);
+  });
+  updateRepositoryList();
+}
+
 function renderAnalysis(evidence, analysis) {
   const score = Math.max(0, Math.min(100, Math.round(analysis.health.score)));
   return `<div class="evidence-layout">
@@ -163,6 +240,63 @@ function clearFormError() {
   formError.hidden = true;
 }
 
+function setEntryMode(mode) {
+  entryMode = mode === 'account' ? 'account' : 'repository';
+  for (const button of entryModeButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.entryMode === entryMode));
+  }
+  const accountMode = entryMode === 'account';
+  urlInput.type = accountMode ? 'text' : 'url';
+  urlInput.autocomplete = accountMode ? 'off' : 'url';
+  urlInput.setAttribute('aria-label', accountMode ? 'GitHub username or organization' : 'Public GitHub repository URL');
+  entryLabel.textContent = accountMode ? 'GitHub username or organization' : 'Public GitHub repository URL';
+  urlInput.placeholder = accountMode ? 'e.g. octocat or expressjs' : 'https://github.com/owner/repository';
+  entryHelp.textContent = accountMode
+    ? 'Enter a GitHub username or organization. RepoGhost will find its public repositories.'
+    : 'Paste a public GitHub URL. No sign-in required.';
+  examplesRow.hidden = accountMode;
+  submitButton.querySelector('span:first-child').textContent = accountMode ? 'Find repositories' : 'Investigate repository';
+}
+
+function showDiscoveryLoading() {
+  resultsSection.hidden = false;
+  resultsSection.setAttribute('aria-busy', 'true');
+  resultsContent.innerHTML = `<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Tracing this GitHub account…</strong><p>Finding public repositories and sorting them by recent activity. RepoGhost will not modify any repository.</p></div></div>`;
+}
+
+async function discoverAccount(username) {
+  clearFormError();
+  submitButton.disabled = true;
+  submitButton.querySelector('span:first-child').textContent = 'Searching…';
+  urlInput.setAttribute('aria-invalid', 'false');
+  showDiscoveryLoading();
+  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try {
+    const response = await fetch('/api/discover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new Error('The server returned a response RepoGhost could not read. Please try again.'); }
+    if (!response.ok) {
+      const error = payload.error || {};
+      throw new Error(error.message || `Repository discovery failed (HTTP ${response.status}).`);
+    }
+    if (!payload.discovery || !payload.discovery.account || !Array.isArray(payload.discovery.repositories)) {
+      throw new Error('The server did not return a repository list. Please try again.');
+    }
+    showRepositoryDiscovery(payload.discovery);
+  } catch (error) {
+    resultsContent.innerHTML = `<div class="error-card"><strong>Repository discovery interrupted</strong><p>${escapeHtml(error.message || 'Something went wrong. Please try again.')}</p></div>`;
+  } finally {
+    resultsSection.setAttribute('aria-busy', 'false');
+    submitButton.disabled = false;
+    submitButton.querySelector('span:first-child').textContent = entryMode === 'account' ? 'Find repositories' : 'Investigate repository';
+  }
+}
+
 function showLoading() {
   resultsSection.hidden = false;
   resultsSection.setAttribute('aria-busy', 'true');
@@ -170,6 +304,7 @@ function showLoading() {
 }
 
 async function investigate(repositoryUrl) {
+  urlInput.value = repositoryUrl;
   clearFormError();
   submitButton.disabled = true;
   submitButton.querySelector('span:first-child').textContent = 'Investigating…';
@@ -197,7 +332,7 @@ async function investigate(repositoryUrl) {
   } finally {
     resultsSection.setAttribute('aria-busy', 'false');
     submitButton.disabled = false;
-    submitButton.querySelector('span:first-child').textContent = 'Investigate repository';
+    submitButton.querySelector('span:first-child').textContent = entryMode === 'account' ? 'Find repositories' : 'Investigate repository';
   }
 }
 
@@ -205,6 +340,16 @@ form.addEventListener('submit', (event) => {
   event.preventDefault();
   clearFormError();
   const value = urlInput.value.trim();
+  if (entryMode === 'account') {
+    if (!value) {
+      urlInput.setAttribute('aria-invalid', 'true');
+      showFormError('Enter a GitHub username or organization, such as octocat or expressjs.');
+      urlInput.focus();
+      return;
+    }
+    discoverAccount(value);
+    return;
+  }
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== 'github.com' || parsed.pathname.split('/').filter(Boolean).length !== 2) {
@@ -219,8 +364,17 @@ form.addEventListener('submit', (event) => {
   investigate(value);
 });
 
+entryModeButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    setEntryMode(button.dataset.entryMode || 'repository');
+    clearFormError();
+    urlInput.focus();
+  });
+});
+
 document.querySelectorAll('[data-repo]').forEach((button) => {
   button.addEventListener('click', () => {
+    setEntryMode('repository');
     urlInput.value = button.getAttribute('data-repo') || '';
     clearFormError();
     investigate(urlInput.value);
@@ -229,6 +383,7 @@ document.querySelectorAll('[data-repo]').forEach((button) => {
 
 clearResultsButton.addEventListener('click', () => {
   resultsContent.innerHTML = '';
+  lastDiscovery = null;
   resultsSection.hidden = true;
   resultsSection.setAttribute('aria-busy', 'false');
   urlInput.focus();
