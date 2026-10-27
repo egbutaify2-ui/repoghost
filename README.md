@@ -8,6 +8,8 @@
 
 - Accepts a public `https://github.com/owner/repository` URL and rejects unsupported hosts and malformed paths.
 - Accepts a GitHub username, `@handle`, or public profile URL and discovers public repositories for users and organizations, with client-side search and sorting before the user chooses a repository to investigate.
+- Provides **Account Intelligence Q&A** after account discovery: ask natural-language questions about public repository metadata, language/activity summaries, and a small sample of recent commits. Answers link to validated public evidence sources; unsupported questions return limitations rather than invented facts.
+- Reuses the discovered account snapshot for five minutes on the running instance and limits extra commit lookups to the three most recently pushed, non-archived, non-fork repositories to reduce repeated API calls.
 - Collects repository metadata, README content (when present), recent commits, open issues (excluding pull requests), and latest release data (when present) through GitHub's public REST API.
 - Asks an **open-weight language model** to summarize the project, assess health from observable signals, surface potential maintenance risks, and propose exactly three evidence-linked next steps.
 - Connects important findings to source IDs that are validated against the actual evidence returned by GitHub. Citations that are missing or invalid are discarded; an invalid analysis is not shown as fact.
@@ -60,7 +62,7 @@ npm test
 npm run check
 ```
 
-`npm test` uses Node's built-in test runner and mocked upstream responses. It covers URL and GitHub account validation, public-repository evidence retrieval and account discovery (with a test HTTP client), user and organization repository lists, missing README/release/issue data, GitHub 404 and rate-limit handling, model configuration and failure states, evidence-source validation, prompt-injection boundaries, HTTP routes, and secure response headers.
+`npm test` uses Node's built-in test runner and mocked upstream responses. It covers URL and GitHub account validation, public-repository evidence retrieval and account discovery, account Q&A evidence collection and citation validation, open-weight model request/error handling, user and organization repository lists, missing README/release/issue data, GitHub 404 and rate-limit handling, prompt-injection boundaries, HTTP routes, and secure response headers.
 
 These tests are deterministic mocks. They do **not** establish that the GitHub API or OpenRouter inference succeeded against live services. A live validation should be completed after the app is deployed and `OPENROUTER_API_KEY` is configured. `/api/health` checks that the server is responding; `aiConfigured` reports only whether the server has a key, not whether a live inference request will succeed.
 

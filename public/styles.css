@@ -293,3 +293,142 @@ h1 { margin-bottom: 18px; font-size: clamp(44px, 5.3vw, 70px); line-height: 1.03
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+
+/* Account-level conversational investigation */
+.account-chat {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid #26313c;
+}
+.account-chat-heading { margin-bottom: 15px; }
+.account-chat-heading h3 { margin: 5px 0 7px; font-size: 18px; letter-spacing: -.025em; }
+.account-chat-heading p { max-width: 660px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.account-chat-messages {
+  display: grid;
+  gap: 10px;
+  max-height: 430px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 16px 0 12px;
+  padding: 2px 3px 2px 0;
+}
+.account-chat-empty {
+  border: 1px dashed #2d3a46;
+  background: #0a1016;
+  padding: 16px;
+  color: #aebbc8;
+}
+.account-chat-empty strong { display: block; margin-bottom: 4px; color: #dbe5ed; font-size: 12px; }
+.account-chat-empty p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.account-chat-message {
+  min-width: 0;
+  border: 1px solid #27333e;
+  background: #0a1016;
+  padding: 13px 14px;
+}
+.account-chat-message.user {
+  margin-left: clamp(12px, 9%, 72px);
+  background: #102018;
+  border-color: #284938;
+}
+.account-chat-message.assistant { margin-right: clamp(0px, 4%, 32px); }
+.account-chat-message.unavailable { border-color: #4a3b29; background: #17130e; }
+.account-chat-message.pending { color: var(--muted); }
+.account-chat-role {
+  display: block;
+  margin-bottom: 7px;
+  color: #8f9fae;
+  font: 9px var(--mono);
+  letter-spacing: .1em;
+}
+.account-chat-message.user .account-chat-role { color: var(--mint); }
+.account-chat-text {
+  margin: 0;
+  color: #d6e0e9;
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.account-chat-citations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #27333e;
+}
+.account-chat-citations .account-chat-role { margin: 0 4px 0 0; }
+.account-chat-citation {
+  display: inline-flex;
+  max-width: 100%;
+  color: var(--mint);
+  border: 1px solid #2d4639;
+  background: #101d17;
+  padding: 5px 7px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.account-chat-citation:hover { border-color: var(--mint); }
+.account-chat-uncertainty {
+  margin-top: 12px;
+  border-left: 2px solid var(--amber);
+  padding: 2px 0 2px 10px;
+  color: #b4a185;
+  font-size: 10px;
+  line-height: 1.7;
+}
+.account-chat-uncertainty strong { font-weight: 600; }
+.account-chat-uncertainty ul { margin: 4px 0 0; padding-left: 16px; }
+.account-chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
+.account-chat-form textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 66px;
+  resize: vertical;
+  border: 1px solid #34414d;
+  border-radius: 0;
+  background: #080d12;
+  padding: 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.account-chat-form textarea::placeholder { color: #657383; }
+.account-chat-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  align-self: stretch;
+  border: 1px solid var(--mint);
+  background: var(--mint);
+  color: #07120c;
+  padding: 0 15px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.account-chat-form button:disabled { opacity: .55; cursor: wait; }
+.account-chat-note {
+  margin: 9px 0 0;
+  color: #798898;
+  font-size: 10px;
+  line-height: 1.65;
+}
+@media (max-width: 620px) {
+  .account-chat { margin-top: 19px; padding-top: 18px; }
+  .account-chat-form { grid-template-columns: minmax(0, 1fr); }
+  .account-chat-form button { min-height: 42px; justify-content: space-between; }
+  .account-chat-message.user { margin-left: 7%; }
+  .account-chat-message.assistant { margin-right: 0; }
+}

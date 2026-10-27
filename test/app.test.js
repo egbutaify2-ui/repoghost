@@ -8,13 +8,18 @@ const {
   HttpError,
   SYSTEM_PROMPT,
   analyzeEvidence,
+  answerAccountQuestion,
+  buildAccountAnswerSchema,
+  buildAccountQuestionSummary,
   buildAnalysisSchema,
+  collectAccountQuestionEvidence,
   createServer,
   discoverRepositories,
   getRepositoryEvidence,
   parseGithubAccountName,
   parseGithubRepoUrl,
   parseModelJson,
+  validateAccountAnswer,
   validateAnalysis,
 } = require('../server');
 
@@ -411,6 +416,153 @@ test('serves the landing page with secure headers', async (t) => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-security-policy'), /default-src 'self'/);
   assert.match(await response.text(), /Every repository/);
+});
+
+
+function accountDiscoveryFixture() {
+  return {
+    account: {
+      login: 'acme', type: 'User', name: 'Acme Tools', bio: 'Public developer tooling',
+      url: 'https://github.com/acme', publicRepos: 1, followers: 12,
+    },
+    repositories: [{
+      id: 77, name: 'engine', fullName: 'acme/engine', url: 'https://github.com/acme/engine',
+      description: 'A TypeScript parsing engine', language: 'TypeScript', stars: 48, forks: 7,
+      openIssuesCount: 2, pushedAt: '2026-10-20T12:00:00Z', updatedAt: '2026-10-20T12:00:00Z',
+      createdAt: '2021-01-05T12:00:00Z', archived: false, fork: false,
+      defaultBranch: 'main', license: 'MIT License',
+    }],
+    returnedCount: 1,
+    limitReached: false,
+  };
+}
+
+test('builds account evidence summaries with bounded repository statistics and sources', () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  assert.equal(evidence.account.login, 'acme');
+  assert.equal(evidence.stats.repositoriesReturnedForThisInvestigation, 1);
+  assert.deepEqual(evidence.stats.languageCountsInReturnedRepositories, { TypeScript: 1 });
+  assert.equal(evidence.repositories[0].sourceId, 'repo-1');
+  assert.equal(evidence.sources[0].id, 'account-profile');
+  assert.equal(evidence.sources[1].url, 'https://github.com/acme/engine');
+});
+
+test('collects a small recent-commit sample and attaches a real source link', async () => {
+  const requests = [];
+  const fetchImpl = async (input) => {
+    const url = new URL(String(input));
+    requests.push(url.pathname);
+    if (url.pathname === '/repos/acme/engine/commits') return responseJson([{
+      sha: 'abcdef1234567890',
+      commit: { message: 'Fix parser edge case', author: { name: 'Contributor', date: '2026-10-20T12:00:00Z' } },
+      html_url: 'https://github.com/acme/engine/commit/abcdef1234567890',
+    }]);
+    throw new Error('Unexpected request: ' + url.href);
+  };
+  const evidence = await collectAccountQuestionEvidence(accountDiscoveryFixture(), {
+    fetchImpl, githubApiBaseUrl: 'https://api.github.test',
+  });
+  assert.equal(evidence.recentCommits.length, 1);
+  assert.equal(evidence.recentCommits[0].message, 'Fix parser edge case');
+  assert.ok(evidence.sources.some((source) => source.id === evidence.recentCommits[0].sourceId &&
+    source.url === 'https://github.com/acme/engine/commit/abcdef1234567890'));
+  assert.deepEqual(requests, ['/repos/acme/engine/commits']);
+});
+
+test('requires account answers to cite a valid account evidence source', () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  assert.throws(() => validateAccountAnswer({
+    answer: 'The account mainly uses TypeScript.',
+    sourceIds: ['invented-source'],
+    uncertainty: [],
+  }, evidence), /valid public evidence source/);
+  const valid = validateAccountAnswer({
+    answer: 'The returned repository uses TypeScript.',
+    sourceIds: ['repo-1'],
+    uncertainty: [],
+  }, evidence);
+  assert.deepEqual(valid.sourceIds, ['repo-1']);
+});
+
+test('answers account questions through the configured open-weight model with a source-constrained schema', async () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  let requestBody;
+  let requestHeaders;
+  const result = await answerAccountQuestion(evidence, 'Which language appears in the repository?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async (_input, options) => {
+      requestBody = JSON.parse(options.body);
+      requestHeaders = options.headers;
+      return responseJson({ choices: [{ message: { content: JSON.stringify({
+        answer: 'The returned repository is written in TypeScript.',
+        sourceIds: ['repo-1'],
+        uncertainty: [],
+      }) } }] });
+    },
+  });
+  assert.equal(requestHeaders.Authorization, 'Bearer test-secret');
+  assert.equal(requestHeaders['X-Title'], 'RepoGhost - Evidence-backed account intelligence');
+  assert.equal(requestBody.response_format.type, 'json_schema');
+  assert.equal(requestBody.response_format.json_schema.schema.properties.sourceIds.items.enum.includes('repo-1'), true);
+  assert.equal(result.answer, 'The returned repository is written in TypeScript.');
+  assert.equal(result.citations[0].url, 'https://github.com/acme/engine');
+  assert.equal(result.status.code, 'AI_READY');
+});
+
+test('does not fabricate account answers when AI is not configured', async () => {
+  let called = false;
+  const result = await answerAccountQuestion(buildAccountQuestionSummary(accountDiscoveryFixture()), 'What does the account work on?', {
+    env: {},
+    fetchImpl: async () => { called = true; throw new Error('must not call provider'); },
+  });
+  assert.equal(called, false);
+  assert.equal(result.answer, null);
+  assert.equal(result.status.code, 'AI_NOT_CONFIGURED');
+});
+
+test('serves account Q&A and reuses cached evidence for follow-up questions', async (t) => {
+  const discovery = accountDiscoveryFixture();
+  let discoveryCalls = 0;
+  let evidenceCalls = 0;
+  const server = createServer({
+    logger: { error() {} },
+    discoverRepositories: async () => { discoveryCalls += 1; return discovery; },
+    collectAccountQuestionEvidence: async (value) => { evidenceCalls += 1; return buildAccountQuestionSummary(value); },
+    answerAccountQuestion: async (evidence, question, options) => ({
+      answer: 'Evidence-backed answer to: ' + question,
+      citations: [evidence.sources[1]],
+      uncertainty: [],
+      status: { code: 'AI_READY', message: 'test answer' },
+      historyReceived: options.history,
+    }),
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const root = 'http://127.0.0.1:' + server.address().port;
+  const ask = (question, history = []) => fetch(root + '/api/account/ask', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'acme', question, history }),
+  });
+
+  const firstResponse = await ask('Which language is used?');
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(first.answer, 'Evidence-backed answer to: Which language is used?');
+  assert.equal(first.citations[0].url, 'https://github.com/acme/engine');
+  assert.equal(first.status.code, 'AI_READY');
+  assert.ok(first.requestId);
+
+  const secondResponse = await ask('What about recent activity?', [{ role: 'user', content: 'Which language is used?' }]);
+  assert.equal(secondResponse.status, 200);
+  assert.equal((await secondResponse.json()).status.code, 'AI_READY');
+  assert.equal(discoveryCalls, 1);
+  assert.equal(evidenceCalls, 1);
+
+  const invalidQuestion = await ask('x'.repeat(501));
+  assert.equal(invalidQuestion.status, 400);
+  assert.equal((await invalidQuestion.json()).error.code, 'INVALID_ACCOUNT_QUESTION');
 });
 
 test('parses a fenced JSON response if the provider wraps it in a fence', () => {

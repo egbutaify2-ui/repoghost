@@ -157,6 +157,22 @@ function showRepositoryDiscovery(discovery) {
     <p class="repository-result-count" id="repository-result-count"></p>
     <div class="repository-list" id="repository-picker-list"></div>
     ${discovery.limitReached ? '<p class="discovery-limit-note">Showing the first 100 public repositories, ordered by recent pushes. Narrow the search to find a specific project.</p>' : ''}
+    <section class="account-chat" aria-label="Ask questions about this GitHub account">
+      <div class="account-chat-heading">
+        <span class="card-kicker">ACCOUNT INTELLIGENCE / FOLLOW-UP</span>
+        <h3>Ask about @${escapeHtml(account.login)}</h3>
+        <p>Ask questions about public repositories, languages, activity, and sampled recent commits. Answers must cite evidence.</p>
+      </div>
+      <div id="account-chat-messages" class="account-chat-messages" aria-live="polite">
+        <div class="account-chat-empty"><strong>What would you like to know?</strong><p>Try “Which projects show the strongest recent activity?” or “What languages appear most often?”</p></div>
+      </div>
+      <form id="account-chat-form" class="account-chat-form">
+        <label class="sr-only" for="account-chat-question">Question about this GitHub account</label>
+        <textarea id="account-chat-question" name="question" rows="2" maxlength="500" placeholder="Ask a question about this account..." required></textarea>
+        <button id="account-chat-submit" type="submit"><span>Ask RepoGhost</span><span aria-hidden="true">↗</span></button>
+      </form>
+      <p class="account-chat-note">Public evidence only. RepoGhost cannot verify private activity, personal intentions, or skills from repository ownership alone.</p>
+    </section>
   </section>`;
 
   const searchInput = resultsContent.querySelector('#repository-search');
@@ -194,6 +210,106 @@ function showRepositoryDiscovery(discovery) {
     investigate(repositoryUrl);
   });
   updateRepositoryList();
+
+  const chatForm = resultsContent.querySelector('#account-chat-form');
+  const chatInput = resultsContent.querySelector('#account-chat-question');
+  const chatSubmit = resultsContent.querySelector('#account-chat-submit');
+  const chatMessages = resultsContent.querySelector('#account-chat-messages');
+  const chatHistory = [];
+
+  function appendChatMessage(role, content, citations = [], uncertainty = []) {
+    const article = document.createElement('article');
+    article.className = 'account-chat-message ' + role;
+    if (role === 'user') {
+      article.innerHTML = '<div class="account-chat-role">YOU</div><p class="account-chat-text">' +
+        escapeHtml(content).replace(/\n/g, '<br>') + '</p>';
+    } else {
+      const citationMarkup = citations.length
+        ? '<div class="account-chat-citations"><span class="account-chat-role">SOURCES</span>' +
+          citations.map((source) => '<a class="account-chat-citation" href="' + escapeHtml(source.url) +
+            '" target="_blank" rel="noopener noreferrer">' + escapeHtml(source.title || source.id) + ' ↗</a>').join('') +
+          '</div>'
+        : '';
+      const uncertaintyMarkup = uncertainty.length
+        ? '<div class="account-chat-uncertainty"><strong>Limits to this answer</strong><ul>' +
+          uncertainty.map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></div>'
+        : '';
+      article.innerHTML = '<div class="account-chat-role">REPOGHOST / EVIDENCE ANSWER</div><p class="account-chat-text">' +
+        escapeHtml(content).replace(/\n/g, '<br>') + '</p>' + citationMarkup + uncertaintyMarkup;
+    }
+    if (chatMessages.querySelector('.account-chat-empty')) chatMessages.innerHTML = '';
+    chatMessages.appendChild(article);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return article;
+  }
+
+  chatForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const question = chatInput.value.trim();
+    if (!question) {
+      chatInput.focus();
+      return;
+    }
+    appendChatMessage('user', question);
+    const pending = appendChatMessage('assistant', 'RepoGhost is checking the account evidence…');
+    pending.classList.add('pending');
+    chatInput.value = '';
+    chatInput.disabled = true;
+    chatSubmit.disabled = true;
+    chatSubmit.querySelector('span:first-child').textContent = 'Thinking…';
+
+    try {
+      const response = await fetch('/api/account/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          username: account.login,
+          question,
+          history: chatHistory.slice(-6),
+        }),
+      });
+      let payload;
+      try { payload = await response.json(); }
+      catch { throw new Error('The server returned a response RepoGhost could not read. Please try again.'); }
+      if (!response.ok) {
+        const error = payload.error || {};
+        throw new Error(error.message || 'The account question failed (HTTP ' + response.status + ').');
+      }
+      pending.classList.remove('pending');
+      if (payload.answer) {
+        pending.innerHTML = '<div class="account-chat-role">REPOGHOST / EVIDENCE ANSWER</div><p class="account-chat-text">' +
+          escapeHtml(payload.answer).replace(/\n/g, '<br>') + '</p>' +
+          ((payload.citations || []).length
+            ? '<div class="account-chat-citations"><span class="account-chat-role">SOURCES</span>' +
+              payload.citations.map((source) => '<a class="account-chat-citation" href="' + escapeHtml(source.url) +
+                '" target="_blank" rel="noopener noreferrer">' + escapeHtml(source.title || source.id) + ' ↗</a>').join('') +
+              '</div>' : '') +
+          ((payload.uncertainty || []).length
+            ? '<div class="account-chat-uncertainty"><strong>Limits to this answer</strong><ul>' +
+              payload.uncertainty.map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></div>'
+            : '');
+        chatHistory.push({ role: 'user', content: question });
+        chatHistory.push({ role: 'assistant', content: payload.answer });
+      } else {
+        const status = payload.status || {};
+        pending.innerHTML = '<div class="account-chat-role">NO VERIFIED ANSWER</div><p class="account-chat-text">' +
+          escapeHtml(status.message || 'RepoGhost could not produce a verified answer.') +
+          '</p><p class="account-chat-note">No answer was invented. You can retry after the provider is available.</p>';
+        pending.classList.add('unavailable');
+      }
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    } catch (error) {
+      pending.classList.remove('pending');
+      pending.classList.add('unavailable');
+      pending.innerHTML = '<div class="account-chat-role">QUESTION INTERRUPTED</div><p class="account-chat-text">' +
+        escapeHtml(error.message || 'Something went wrong. Please try again.') + '</p>';
+    } finally {
+      chatInput.disabled = false;
+      chatSubmit.disabled = false;
+      chatSubmit.querySelector('span:first-child').textContent = 'Ask RepoGhost';
+      chatInput.focus();
+    }
+  });
 }
 
 function renderAnalysis(evidence, analysis) {
