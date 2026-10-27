@@ -432,3 +432,30 @@ h1 { margin-bottom: 18px; font-size: clamp(44px, 5.3vw, 70px); line-height: 1.03
   .account-chat-message.user { margin-left: 7%; }
   .account-chat-message.assistant { margin-right: 0; }
 }
+
+
+/* Username-first repository cards with expandable evidence inline. */
+.discovered-repo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.discovered-repo-detail {
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+  padding-top: 14px;
+  border-top: 1px solid #26313c;
+}
+.discovered-repo-detail[hidden] { display: none; }
+.discovered-repo-detail .repo-overview { margin: 0 0 16px; }
+.discovered-repo-detail .analysis-unavailable { margin-bottom: 14px; }
+.discovered-repo-detail .evidence-layout { margin-bottom: 12px; }
+.discovered-repo-detail .uncertainty-note { margin: 10px 0 2px; }
+.repo-investigate-button[aria-expanded="true"] { color: #e3eee8; border-color: #688c78; }
+.repo-investigate-button:disabled { opacity: .65; cursor: wait; }
+@media (max-width: 620px) {
+  .discovered-repo { grid-template-columns: minmax(0, 1fr); }
+  .discovered-repo-detail { grid-column: 1; }
+  .repo-investigate-button { align-self: start; }
+}
