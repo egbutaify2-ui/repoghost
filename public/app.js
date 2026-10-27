@@ -341,7 +341,6 @@ function renderEvidenceOnly(evidence) {
     <div class="stack">
       <section class="result-card"><div class="card-kicker">GITHUB / DOCUMENTATION</div><h3>README trace</h3>${renderReadme(evidence)}</section>
       <section class="result-card"><div class="card-kicker">GITHUB / RELEASE HISTORY</div><h3>Latest release</h3>${renderRelease(evidence)}</section>
-      <section class="result-card"><div class="card-kicker">NEXT / CONFIGURE INFERENCE</div><h3>Enable open-weight analysis</h3><p>Add an OpenRouter API key to the server environment. RepoGhost uses <code>google/gemma-4-26b-a4b-it:free</code> by default and does not silently switch to a closed model.</p><p>The repository evidence above is live; an AI assessment has not been generated for this case.</p></section>
     </div>
   </div>`;
 }
@@ -395,6 +394,35 @@ async function discoverAccount(username) {
   }
 }
 
+async function loadRepositoryAnalysis(repositoryUrl, evidence, analysisSlot) {
+  if (!analysisSlot || !analysisSlot.isConnected) return;
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ repositoryUrl }),
+    });
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new Error('The AI service returned a response RepoGhost could not read.'); }
+    if (!response.ok) {
+      const error = payload.error || {};
+      throw new Error(error.message || 'AI analysis failed (HTTP ' + response.status + ').');
+    }
+    if (!analysisSlot.isConnected) return;
+    analysisSlot.innerHTML = payload.analysis
+      ? renderAnalysis(evidence, payload.analysis)
+      : renderAiUnavailable(payload.analysisStatus);
+  } catch (error) {
+    if (analysisSlot.isConnected) {
+      analysisSlot.innerHTML = renderAiUnavailable({
+        code: 'AI_UNAVAILABLE',
+        message: error.message || 'AI analysis could not be completed. The public evidence remains available above.',
+      });
+    }
+  }
+}
+
 async function inspectRepositoryInline(repositoryUrl, button) {
   const repositoryCard = button.closest('.discovered-repo');
   if (!repositoryCard || !repositoryUrl) return;
@@ -414,14 +442,14 @@ async function inspectRepositoryInline(repositoryUrl, button) {
   detail.className = 'discovered-repo-detail';
   detail.setAttribute('aria-label', 'Repository evidence');
   detail.setAttribute('aria-live', 'polite');
-  detail.innerHTML = '<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Loading repository evidence…</strong><p>Fetching public metadata, README, recent commits, open issues, and release records.</p></div></div>';
+  detail.innerHTML = '<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Loading GitHub evidence…</strong><p>Public metadata, README, sampled commits, issues, and release records appear before AI analysis.</p></div></div>';
   repositoryCard.append(detail);
   button.disabled = true;
   button.setAttribute('aria-expanded', 'true');
   button.innerHTML = 'Loading… <span aria-hidden="true">◌</span>';
 
   try {
-    const response = await fetch('/api/investigate', {
+    const response = await fetch('/api/evidence', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ repositoryUrl }),
@@ -436,12 +464,13 @@ async function inspectRepositoryInline(repositoryUrl, button) {
     if (!payload.evidence || !payload.evidence.repository) {
       throw new Error('The server did not return repository evidence. Please try again.');
     }
-    const aiNotice = payload.analysis ? '' : renderAiUnavailable(payload.analysisStatus);
     detail.innerHTML = renderOverview(payload.evidence) +
-      aiNotice +
-      (payload.analysis ? renderAnalysis(payload.evidence, payload.analysis) : renderEvidenceOnly(payload.evidence)) +
+      '<div class="analysis-slot"><div class="loading-card" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>AI analysis is running separately</strong><p>The GitHub evidence is already available below; the model cannot hold it back.</p></div></div></div>' +
+      renderEvidenceOnly(payload.evidence) +
       '<p class="uncertainty-note">These are public repository signals, not a verdict about the people behind the project. Check the linked sources before acting.</p>';
     detail.dataset.loaded = 'true';
+    const analysisSlot = detail.querySelector('.analysis-slot');
+    void loadRepositoryAnalysis(repositoryUrl, payload.evidence, analysisSlot);
   } catch (error) {
     detail.innerHTML = '<div class="error-card"><strong>Repository evidence interrupted</strong><p>' +
       escapeHtml(error.message || 'Something went wrong. Please try again.') + '</p></div>';

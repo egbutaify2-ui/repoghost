@@ -10,6 +10,7 @@ const {
   SYSTEM_PROMPT,
   analyzeEvidence,
   answerAccountQuestion,
+  answerAccountHiringQuestion,
   buildAccountAnswerSchema,
   buildAccountQuestionSummary,
   buildAnalysisSchema,
@@ -440,6 +441,39 @@ test('serves the GitHub repository discovery HTTP endpoint', async (t) => {
   assert.ok(body.requestId);
 });
 
+test('serves repository evidence before AI analysis and reuses cached evidence', async (t) => {
+  let evidenceCalls = 0;
+  let analysisCalls = 0;
+  const fixture = await getEvidenceFixture();
+  const server = createServer({
+    logger: { error() {} },
+    getRepositoryEvidence: async () => { evidenceCalls += 1; return fixture; },
+    analyzeEvidence: async () => {
+      analysisCalls += 1;
+      return { analysis: null, status: { code: 'AI_NOT_CONFIGURED', message: 'AI is unavailable in this test.' } };
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const root = 'http://127.0.0.1:' + server.address().port;
+  const post = (path) => fetch(root + path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ repositoryUrl: 'https://github.com/acme/engine' }),
+  });
+  const evidenceResponse = await post('/api/evidence');
+  assert.equal(evidenceResponse.status, 200);
+  assert.equal((await evidenceResponse.json()).evidence.repository.fullName, 'acme/engine');
+  assert.equal(evidenceCalls, 1);
+  assert.equal(analysisCalls, 0, 'evidence endpoint must not wait for AI analysis');
+
+  const analysisResponse = await post('/api/analyze');
+  assert.equal(analysisResponse.status, 200);
+  assert.equal((await analysisResponse.json()).analysisStatus.code, 'AI_NOT_CONFIGURED');
+  assert.equal(evidenceCalls, 1, 'analysis should reuse the previously fetched evidence');
+  assert.equal(analysisCalls, 1);
+});
+
 test('serves the landing page with secure headers', async (t) => {
   const server = createServer({ logger: { error() {} } });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -554,6 +588,21 @@ test('requires account answers to cite a valid account evidence source', () => {
     uncertainty: [],
   }, evidence);
   assert.deepEqual(valid.sourceIds, ['repo-1']);
+});
+
+test('answers hiring-profile follow-ups from public metadata without calling the model', () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  const result = answerAccountHiringQuestion(
+    evidence,
+    'why? you dont think his profile is strong enough?',
+    [{ role: 'user', content: 'do you think i can hire him?' }],
+  );
+  assert.ok(result);
+  assert.match(result.answer, /I’m not saying the profile is weak/i);
+  assert.match(result.answer, /technical screen/i);
+  assert.ok(result.citations.some((source) => source.url === 'https://github.com/acme'));
+  assert.ok(result.citations.some((source) => source.url === 'https://github.com/acme/engine'));
+  assert.equal(result.status.code, 'EVIDENCE_READY');
 });
 
 test('answers account questions through the configured open-weight model with a source-constrained schema', async () => {
@@ -775,7 +824,9 @@ test('serves username-only GitHub search with repository evidence and account ch
   assert.match(frontend, /function inspectRepositoryInline\(repositoryUrl, button\)/);
   assert.match(frontend, /renderAccountChatPanel\(account\.login\)/);
   assert.match(frontend, /\/api\/account\/ask/);
-  assert.match(frontend, /\/api\/investigate/);
+  assert.match(frontend, /\/api\/evidence/);
+  assert.match(frontend, /\/api\/analyze/);
+  assert.match(frontend, /AI analysis is running separately/);
   assert.match(frontend, /data-username/);
   assert.doesNotMatch(frontend, /repository-url/);
   assert.doesNotMatch(frontend, /data-entry-mode/);

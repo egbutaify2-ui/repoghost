@@ -15,6 +15,8 @@ const MAX_ISSUE_BODY_CHARS = 1_000;
 const GITHUB_TIMEOUT_MS = 10_000;
 const GITHUB_RESPONSE_CACHE_TTL_MS = 30_000;
 const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 300;
+const REPOSITORY_EVIDENCE_CACHE_TTL_MS = 60_000;
+const REPOSITORY_EVIDENCE_CACHE_MAX_ENTRIES = 60;
 const githubResponseCaches = new WeakMap();
 
 const MODEL_TIMEOUT_MS = 45_000;
@@ -693,6 +695,71 @@ function validatePlainTextAccountAnswer(output, evidence) {
   return { answer: answerText.slice(0, 4_000), sourceIds, uncertainty: [] };
 }
 
+function answerAccountHiringQuestion(evidence, question, history = []) {
+  const currentHiringQuestion = /\b(?:hire|hiring|recruit|candidate|applicant)\b|strong enough|profile.{0,30}\b(?:strong|weak|good)\b/i.test(question);
+  const normalizedHistory = normalizeAccountChatHistory(history);
+  const historyShowsHiring = normalizedHistory.some((item) => /\b(?:hire|hiring|recruit|candidate|applicant)\b|strong enough/i.test(item.content));
+  const isShortFollowUp = /^(?:why|how so|can you explain|what do you mean|what makes you say that)\b/i.test(question.trim());
+  if (!currentHiringQuestion && !(isShortFollowUp && historyShowsHiring)) return null;
+
+  const availableSources = new Map((evidence.sources || []).map((source) => [source.id, source]));
+  const citations = new Map();
+  const addCitation = (id) => {
+    if (availableSources.has(id)) citations.set(id, availableSources.get(id));
+  };
+  addCitation('account-profile');
+
+  const repositoryRows = Array.isArray(evidence.repositories) ? evidence.repositories : [];
+  const reported = Number(evidence.stats && evidence.stats.publicRepositoriesReportedByGitHub);
+  const returned = Number(evidence.stats && evidence.stats.repositoriesReturnedForThisInvestigation) || repositoryRows.length;
+  const stars = Number(evidence.stats && evidence.stats.totalStarsAcrossReturnedRepositories) || 0;
+  const starsComplete = evidence.stats && evidence.stats.starsTotalIsComplete === true;
+  const languageCounts = evidence.stats && evidence.stats.languageCountsInReturnedRepositories || {};
+  const languages = Object.entries(languageCounts)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 4)
+    .map(([language, count]) => language + (count > 1 ? ' (' + count + ' repositories)' : ''))
+    .join(', ');
+
+  const recent = (Array.isArray(evidence.recentlyPushedRepositories) ? evidence.recentlyPushedRepositories : [])
+    .filter((repository) => repository && repository.pushedAt)
+    .slice(0, 3);
+  for (const repository of recent) addCitation(repository.sourceId);
+  for (const repository of (Array.isArray(evidence.mostStarredRepositories) ? evidence.mostStarredRepositories : []).slice(0, 2)) {
+    addCitation(repository.sourceId);
+  }
+
+  const signals = [];
+  if (Number.isFinite(reported)) {
+    signals.push('GitHub reports ' + reported + ' public repositories; ' + returned + ' were returned in this investigation.');
+  } else {
+    signals.push('The investigation returned ' + returned + ' public repositories.');
+  }
+  signals.push('Those returned repositories have ' + stars.toLocaleString('en-US') + ' combined stars' +
+    (starsComplete ? '.' : ' (a partial total, not an account-wide total).'));
+  if (languages) signals.push('Languages visible in the returned repository list include ' + languages + '.');
+  if (recent.length) {
+    const activity = recent.map((repository) => {
+      const date = new Date(repository.pushedAt);
+      const day = Number.isNaN(date.getTime()) ? 'a recorded recent date' : date.toISOString().slice(0, 10);
+      return repository.fullName + ' (' + day + ')';
+    });
+    signals.push('GitHub records pushes on these repositories: ' + activity.join(', ') + '. This is repository activity, not proof the account owner authored every change.');
+  }
+
+  const answer = 'I’m not saying the profile is weak. Based on this public GitHub snapshot, I’d consider the account worth a technical screen—not a hiring decision yet.\n\n' +
+    signals.join(' ') + '\n\n' +
+    'What this snapshot cannot establish is code quality, testing discipline, system-design judgment, collaboration, or how much of the code the account owner personally wrote. Before deciding, inspect one or two repositories relevant to the role, look at their tests and commits, and ask the candidate to explain key trade-offs or complete a small role-relevant exercise.';
+
+  return {
+    answer,
+    citations: [...citations.values()].slice(0, 6),
+    uncertainty: ['Public GitHub activity is a useful screening signal, not proof of individual contribution or job performance.'],
+    status: { code: 'EVIDENCE_READY', message: 'This assessment was generated directly from the public GitHub metadata in the current investigation.' },
+    model: null,
+  };
+}
+
 async function answerAccountQuestion(evidence, question, options = {}) {
   const directMetrics = answerAccountMetricQuestion(evidence, question);
   if (directMetrics) return directMetrics;
@@ -742,7 +809,7 @@ async function answerAccountQuestion(evidence, question, options = {}) {
     const body = {
       model,
       temperature: mode === 'structured' ? 0.2 : 0,
-      max_tokens: mode === 'text' ? 1_800 : mode === 'json' ? 1_500 : 1_300,
+      max_tokens: 750,
       provider: { require_parameters: true },
       messages: mode === 'structured' ? baseMessages : mode === 'json' ? jsonMessages : textMessages,
     };
@@ -1299,13 +1366,44 @@ function createServer(dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
   const logger = dependencies.logger || console;
   const accountContextCache = new Map();
+  const repositoryEvidenceCache = new Map();
   const rememberDiscovery = (discovery) => {
     const login = discovery && discovery.account && discovery.account.login;
-    if (typeof login !== 'string' || !login.trim()) return;
+    if (typeof login !== 'string' || !login.trim()) return null;
     const key = login.toLowerCase();
     accountContextCache.delete(key);
-    accountContextCache.set(key, { discovery, evidence: null, expiresAt: Date.now() + ACCOUNT_CONTEXT_CACHE_TTL_MS });
+    const context = { discovery, evidence: null, evidencePromise: null, expiresAt: Date.now() + ACCOUNT_CONTEXT_CACHE_TTL_MS };
+    accountContextCache.set(key, context);
     while (accountContextCache.size > 40) accountContextCache.delete(accountContextCache.keys().next().value);
+    return context;
+  };
+  const primeAccountEvidence = (context) => {
+    if (context.evidence) return Promise.resolve(context.evidence);
+    if (context.evidencePromise) return context.evidencePromise;
+    context.evidencePromise = collectAccountEvidence(context.discovery, { fetchImpl })
+      .then((evidence) => {
+        context.evidence = evidence;
+        context.expiresAt = Date.now() + ACCOUNT_CONTEXT_CACHE_TTL_MS;
+        return evidence;
+      })
+      .catch((error) => {
+        context.evidencePromise = null;
+        throw error;
+      });
+    return context.evidencePromise;
+  };
+  const getCachedRepositoryEvidence = async (rawUrl) => {
+    const repository = parseGithubRepoUrl(rawUrl);
+    const key = repository.fullName.toLowerCase();
+    const cached = repositoryEvidenceCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.evidence;
+    if (cached) repositoryEvidenceCache.delete(key);
+    const evidence = await getEvidence(repository.url, { fetchImpl });
+    repositoryEvidenceCache.set(key, { evidence, expiresAt: Date.now() + REPOSITORY_EVIDENCE_CACHE_TTL_MS });
+    while (repositoryEvidenceCache.size > REPOSITORY_EVIDENCE_CACHE_MAX_ENTRIES) {
+      repositoryEvidenceCache.delete(repositoryEvidenceCache.keys().next().value);
+    }
+    return evidence;
   };
   return http.createServer(async (req, res) => {
     const requestId = randomUUID();
@@ -1326,7 +1424,8 @@ function createServer(dependencies = {}) {
       }
       try {
         const discovery = await discover(body.username ?? body.account, { fetchImpl });
-        rememberDiscovery(discovery);
+        const context = rememberDiscovery(discovery);
+        if (context && !dependencies.discoverRepositories) void primeAccountEvidence(context).catch(() => {});
         return sendJson(res, 200, { discovery, requestId }, requestId);
       } catch (error) {
         const status = error instanceof HttpError ? error.status : 500;
@@ -1352,12 +1451,26 @@ function createServer(dependencies = {}) {
         }
         if (!context) {
           const discovery = await discover(username, { fetchImpl });
-          context = { discovery, evidence: null, expiresAt: Date.now() + ACCOUNT_CONTEXT_CACHE_TTL_MS };
-          rememberDiscovery(discovery);
+          context = rememberDiscovery(discovery) || { discovery, evidence: null, evidencePromise: null, expiresAt: Date.now() + ACCOUNT_CONTEXT_CACHE_TTL_MS };
           context = accountContextCache.get(String(discovery.account.login || username).toLowerCase()) || context;
         }
+        const basicEvidence = buildAccountQuestionSummary(context.discovery);
+        const quickHiringAnswer = answerAccountHiringQuestion(basicEvidence, question, body.history);
+        const quickMetricAnswer = /\bcontributors?\b/i.test(question) ? null : answerAccountMetricQuestion(basicEvidence, question);
+        const quickAnswer = quickHiringAnswer || quickMetricAnswer;
+        if (quickAnswer) {
+          return sendJson(res, 200, {
+            account: context.discovery.account,
+            answer: quickAnswer.answer || null,
+            citations: Array.isArray(quickAnswer.citations) ? quickAnswer.citations : [],
+            uncertainty: Array.isArray(quickAnswer.uncertainty) ? quickAnswer.uncertainty : [],
+            status: quickAnswer.status || { code: 'EVIDENCE_READY', message: 'Answered from public GitHub evidence.' },
+            model: quickAnswer.model || null,
+            requestId,
+          }, requestId);
+        }
         if (!context.evidence) {
-          context.evidence = await collectAccountEvidence(context.discovery, { fetchImpl });
+          context.evidence = await primeAccountEvidence(context);
           context.expiresAt = Date.now() + ACCOUNT_CONTEXT_CACHE_TTL_MS;
         }
         if (/\bcontributors?\b/i.test(question) && !context.evidence.contributorSummary) {
@@ -1383,6 +1496,39 @@ function createServer(dependencies = {}) {
         return sendJson(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message || 'The account question failed. Please try again.' }, requestId }, requestId);
       }
     }
+    if (req.method === 'POST' && pathname === '/api/evidence') {
+      let body;
+      try { body = await readJsonBody(req); }
+      catch (error) {
+        const status = error instanceof HttpError ? error.status : 400;
+        return sendJson(res, status, { error: { code: error.code || 'INVALID_REQUEST', message: error.message }, requestId }, requestId);
+      }
+      try {
+        const evidence = await getCachedRepositoryEvidence(body.repositoryUrl);
+        return sendJson(res, 200, { evidence, requestId }, requestId);
+      } catch (error) {
+        const status = error instanceof HttpError ? error.status : 500;
+        if (status >= 500) logger.error?.('[RepoGhost ' + requestId + '] ' + (error.code || error.name || 'ERROR'));
+        return sendJson(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message || 'Repository evidence could not be loaded.' }, requestId }, requestId);
+      }
+    }
+    if (req.method === 'POST' && pathname === '/api/analyze') {
+      let body;
+      try { body = await readJsonBody(req); }
+      catch (error) {
+        const status = error instanceof HttpError ? error.status : 400;
+        return sendJson(res, status, { error: { code: error.code || 'INVALID_REQUEST', message: error.message }, requestId }, requestId);
+      }
+      try {
+        const evidence = await getCachedRepositoryEvidence(body.repositoryUrl);
+        const ai = await getAnalysis(evidence, { fetchImpl });
+        return sendJson(res, 200, { analysis: ai.analysis, analysisStatus: ai.status, model: ai.model || null, requestId }, requestId);
+      } catch (error) {
+        const status = error instanceof HttpError ? error.status : 500;
+        if (status >= 500) logger.error?.('[RepoGhost ' + requestId + '] ' + (error.code || error.name || 'ERROR'));
+        return sendJson(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message || 'Repository analysis could not be completed.' }, requestId }, requestId);
+      }
+    }
     if (req.method === 'POST' && pathname === '/api/investigate') {
       let body;
       try { body = await readJsonBody(req); }
@@ -1391,7 +1537,7 @@ function createServer(dependencies = {}) {
         return sendJson(res, status, { error: { code: error.code || 'INVALID_REQUEST', message: error.message }, requestId }, requestId);
       }
       try {
-        const evidence = await getEvidence(body.repositoryUrl, { fetchImpl });
+        const evidence = await getCachedRepositoryEvidence(body.repositoryUrl);
         const ai = await getAnalysis(evidence, { fetchImpl });
         return sendJson(res, 200, { evidence, analysis: ai.analysis, analysisStatus: ai.status, model: ai.model || null, requestId }, requestId);
       } catch (error) {
@@ -1420,6 +1566,7 @@ module.exports = {
   SYSTEM_PROMPT,
   analyzeEvidence,
   answerAccountQuestion,
+  answerAccountHiringQuestion,
   buildAccountAnswerSchema,
   buildAccountQuestionSummary,
   buildAnalysisSchema,
