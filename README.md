@@ -53,7 +53,7 @@ The MVP uses plain JavaScript deliberately: the connected development environmen
 
 ## Open-weight model and open innovation
 
-RepoGhost defaults to the explicit free endpoint `google/gemma-4-26b-a4b-it:free` (Gemma 4 26B A4B IT), an open-weight model released under Apache 2.0. The configured model ID is used for both repository analysis and account Q&A. If that model is unavailable, RepoGhost reports the error instead of silently switching to a different model. Account Q&A may retry structured, JSON, and plain-text output formats, but those attempts all use the same configured model. OpenRouter can still route that model to an available provider; it does not mean the application changes to a different model family.
+RepoGhost defaults to the explicit free endpoint `google/gemma-4-26b-a4b-it:free` (Gemma 4 26B A4B IT), an open-weight model released under Apache 2.0. The configured model ID is used for both repository analysis and account Q&A. If that model is unavailable, RepoGhost reports the error instead of silently switching to a different model. Account Q&A retries JSON and then cited plain-text output when needed, but both attempts use the same configured model. OpenRouter can still route that model to an available provider; it does not mean the application changes to a different model family.
 
 Why open innovation matters to RepoGhost:
 
