@@ -310,6 +310,12 @@ function showRepositoryDiscovery(discovery) {
   });
   updateRepositoryList();
 
+  const assessUser = document.querySelector('#intel-assess-form [name="username"]');
+  const compareUser = document.querySelector('#intel-compare-form [name="usernameA"]');
+  const recommendUser = document.querySelector('#intel-recommend-form [name="username"]');
+  if (assessUser && !assessUser.value) assessUser.value = account.login || '';
+  if (compareUser && !compareUser.value) compareUser.value = account.login || '';
+  if (recommendUser && !recommendUser.value) recommendUser.value = account.login || '';
   attachAccountChat(account);
 }
 
@@ -510,3 +516,245 @@ clearResultsButton.addEventListener('click', () => {
   resultsSection.setAttribute('aria-busy', 'false');
   usernameInput.focus();
 });
+
+
+/* Evidence-backed developer intelligence suite */
+function intelSafeUrl(value) {
+  return typeof value === 'string' && /^https:\/\/github\.com\//i.test(value) ? value : '';
+}
+
+function renderIntelSourceLinks(sources, ids) {
+  const selected = new Set(Array.isArray(ids) ? ids : []);
+  const available = Array.isArray(sources) ? sources : [];
+  const links = available.filter((source) => selected.has(source.id) && intelSafeUrl(source.url));
+  const unique = [...new Map(links.map((source) => [source.id, source])).values()];
+  if (!unique.length) return '';
+  return '<div class="intel-source-links"><span class="intel-source-label">EVIDENCE</span>' +
+    unique.slice(0, 6).map((source) => '<a href="' + escapeHtml(intelSafeUrl(source.url)) +
+      '" target="_blank" rel="noopener noreferrer">' + escapeHtml(source.title || source.id) + ' ↗</a>').join('') + '</div>';
+}
+
+function renderIntelEmpty(message) {
+  return '<div class="intel-empty">' + escapeHtml(message) + '</div>';
+}
+
+function renderIntelLoading(message) {
+  return '<div class="loading-card" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>' +
+    escapeHtml(message) + '</strong><p>Collecting bounded public GitHub evidence. RepoGhost will not change the repositories.</p></div></div>';
+}
+
+function renderIntelError(message) {
+  return '<div class="error-card" role="alert"><strong>Investigation interrupted</strong><p>' + escapeHtml(message) + '</p></div>';
+}
+
+function renderIntelProject(project, assessment) {
+  return '<article class="intel-project"><div class="intel-project-head"><div><a href="' +
+    escapeHtml(intelSafeUrl(project.url)) + '" target="_blank" rel="noopener noreferrer">' +
+    escapeHtml(project.fullName) + ' ↗</a><p>' + escapeHtml(project.description || 'No public description supplied.') +
+    '</p></div><span class="pill ' + (project.archived ? 'warn' : 'neutral') + '">' +
+    (project.archived ? 'Archived' : escapeHtml(project.language || 'Language unknown')) + '</span></div>' +
+    '<div class="intel-term-list">' + (project.matchedTerms || []).slice(0, 8).map((term) => '<span>' + escapeHtml(term) + '</span>').join('') + '</div>' +
+    '<p class="intel-evidence-note">' + escapeHtml((project.reasons || []).join(' ')) + '</p>' +
+    (project.license ? '<p class="intel-evidence-note">Reported license: ' + escapeHtml(project.license) + ' (review the terms before reuse).</p>' : '<p class="intel-evidence-note">No license was reported in this snapshot; review the repository before reuse.</p>') +
+    renderIntelSourceLinks(assessment.sources, project.sourceIds) +
+    ((project.documentationSignals || []).length ? '<ul class="intel-mini-list">' + project.documentationSignals.map((item) =>
+      '<li><strong>' + escapeHtml(item.label) + ':</strong> ' + escapeHtml(item.detail) +
+      renderIntelSourceLinks(assessment.sources, [item.sourceId]) + '</li>').join('') + '</ul>' : '') +
+    '</article>';
+}
+
+function renderIntelAssessment(assessment) {
+  if (!assessment || assessment.kind !== 'developer-assessment') return renderIntelError('The server did not return a developer assessment.');
+  const sources = assessment.sources || [];
+  return '<div class="intel-result-heading"><div><span class="card-kicker">ASSESSMENT / @' + escapeHtml(assessment.account.login) +
+    '</span><h3>' + escapeHtml(assessment.role) + '</h3></div><a class="intel-profile-link" href="' +
+    escapeHtml(intelSafeUrl(assessment.account.url)) + '" target="_blank" rel="noopener noreferrer">Open profile ↗</a></div>' +
+    '<section class="intel-summary"><strong>Evidence summary</strong><p>' + escapeHtml(assessment.summary) + '</p>' +
+    renderIntelSourceLinks(sources, ['account-profile']) + '</section>' +
+    '<div class="intel-results-grid"><section class="intel-result-card"><span class="card-kicker">RELEVANT PROJECTS</span><h4>Projects to inspect</h4>' +
+    ((assessment.relevantProjects || []).length ? assessment.relevantProjects.map((project) => renderIntelProject(project, assessment)).join('') :
+      renderIntelEmpty('No strong role-specific metadata match was found in the returned public repository sample.')) +
+    '</section><section class="intel-result-card"><span class="card-kicker">TECHNOLOGY SIGNALS</span><h4>Technologies seen in metadata or inspected README excerpts</h4>' +
+    ((assessment.demonstratedTechnologies || []).length ? '<div class="intel-tech-list">' + assessment.demonstratedTechnologies.map((tech) =>
+      '<div><strong>' + escapeHtml(tech.technology) + '</strong><span>' + tech.repositoryCount + ' project(s)</span>' +
+      renderIntelSourceLinks(sources, tech.sourceIds) + '</div>').join('') + '</div>' : renderIntelEmpty('No specific technologies were verified from the selected evidence.')) +
+    '<span class="card-kicker intel-section-kicker">ACTIVITY SIGNALS</span>' +
+    '<p class="intel-evidence-note">' + escapeHtml(assessment.activity.observationBasis || '') + '</p>' +
+    ((assessment.activity.recentRepositories || []).length ? '<ul class="intel-mini-list">' + assessment.activity.recentRepositories.map((item) =>
+      '<li><a href="' + escapeHtml(intelSafeUrl(item.url)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.repository) +
+      ' ↗</a> — pushed ' + escapeHtml(formatDate(item.pushedAt)) + '</li>').join('') + '</ul>' : renderIntelEmpty('No push dates were available in this returned sample.')) +
+    '</section><section class="intel-result-card"><span class="card-kicker">SUPPORTED SIGNALS</span><h4>Evidence-backed strengths</h4>' +
+    '<ul class="intel-finding-list">' + (assessment.strengths || []).map((item) => '<li><p>' + escapeHtml(item.claim) + '</p>' +
+      renderIntelSourceLinks(sources, item.sourceIds) + '</li>').join('') + '</ul></section>' +
+    '<section class="intel-result-card"><span class="card-kicker">WHAT REMAINS UNKNOWN</span><h4>Evidence gaps</h4><ul class="intel-finding-list">' +
+    (assessment.evidenceGaps || []).map((item) => '<li><p>' + escapeHtml(item) + '</p></li>').join('') + '</ul>' +
+    '<span class="card-kicker intel-section-kicker">INTERVIEW PREPARATION</span><h4>Questions to verify in a real screen</h4><ol class="intel-finding-list">' +
+    (assessment.interviewQuestions || []).map((item) => '<li><p><strong>' + escapeHtml(item.question) + '</strong></p><p>' + escapeHtml(item.why) + '</p>' +
+      renderIntelSourceLinks(sources, item.sourceIds) + '</li>').join('') + '</ol>' +
+    '<div class="intel-next-step"><strong>Suggested next step</strong><p>' + escapeHtml(assessment.nextStep || '') + '</p></div></section></div>' +
+    '<section class="intel-limitations"><strong>Scope and limitations</strong><ul>' + (assessment.limitations || []).map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></section>' +
+    ((assessment.collectionWarnings || []).length ? '<section class="intel-limitations"><strong>Incomplete evidence collection</strong><ul>' + assessment.collectionWarnings.map((item) =>
+      '<li>' + escapeHtml(item.repository + ': ' + item.message) + '</li>').join('') + '</ul></section>' : '');
+}
+
+function renderIntelComparison(comparison) {
+  if (!comparison || comparison.kind !== 'developer-comparison') return renderIntelError('The server did not return an account comparison.');
+  const left = comparison.left || {};
+  const right = comparison.right || {};
+  const renderSide = (assessment) => '<div class="intel-compare-profile"><strong>@' + escapeHtml(assessment.account.login) + '</strong>' +
+    '<span>' + escapeHtml(assessment.role) + '</span><p>' + escapeHtml(assessment.summary) + '</p>' +
+    ((assessment.relevantProjects || []).slice(0, 2).map((project) => '<a href="' + escapeHtml(intelSafeUrl(project.url)) +
+      '" target="_blank" rel="noopener noreferrer">' + escapeHtml(project.fullName) + ' ↗</a>').join('')) + '</div>';
+  return '<div class="intel-result-heading"><div><span class="card-kicker">ACCOUNT COMPARISON</span><h3>' + escapeHtml(comparison.goal) + '</h3></div></div>' +
+    '<section class="intel-summary"><strong>What the evidence suggests</strong><p>' + escapeHtml(comparison.summary) +
+    '</p><p class="intel-evidence-note">This is a relevance comparison, not an overall ranking of developer quality.</p></section>' +
+    '<div class="intel-compare-grid">' + renderSide(left) + renderSide(right) + '</div>' +
+    '<section class="intel-result-card intel-criteria"><span class="card-kicker">EXPLICIT COMPARISON CRITERIA</span>' +
+    (comparison.criteria || []).map((criterion) => '<div class="intel-criterion"><h4>' + escapeHtml(criterion.label) + '</h4>' +
+      '<div class="intel-criterion-values"><div><span>@' + escapeHtml(left.account.login) + '</span><p>' + escapeHtml(criterion.leftValue) + '</p>' +
+      renderIntelSourceLinks(left.sources, criterion.leftSourceIds) + '</div><div><span>@' + escapeHtml(right.account.login) + '</span><p>' +
+      escapeHtml(criterion.rightValue) + '</p>' + renderIntelSourceLinks(right.sources, criterion.rightSourceIds) + '</div></div>' +
+      '<p class="intel-evidence-note">' + escapeHtml(criterion.interpretation) + '</p></div>').join('') + '</section>' +
+    '<section class="intel-limitations"><strong>Scope and limitations</strong><ul>' + (comparison.limitations || []).map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></section>' +
+    ((comparison.collectionWarnings || []).length ? '<section class="intel-limitations"><strong>Incomplete evidence collection</strong><ul>' +
+      comparison.collectionWarnings.map((item) => '<li>' + escapeHtml(item.side + ' / ' + item.repository + ': ' + item.message) + '</li>').join('') +
+      '</ul></section>' : '');
+}
+
+function renderIntelHealth(health) {
+  if (!health || health.kind !== 'repository-health') return renderIntelError('The server did not return a repository health report.');
+  const repo = health.repository || {};
+  return '<div class="intel-result-heading"><div><span class="card-kicker">PROJECT RESURRECTION / SNAPSHOT</span><h3><a href="' +
+    escapeHtml(intelSafeUrl(repo.url)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(repo.fullName) + ' ↗</a></h3>' +
+    '<p>' + escapeHtml(repo.description || 'No public description supplied.') + '</p></div>' +
+    '<span class="pill ' + (repo.archived ? 'warn' : 'neutral') + '">' + (repo.archived ? 'Archived' : 'Read-only') + '</span></div>' +
+    '<div class="intel-snapshot-grid">' + [
+      ['Primary language', repo.language || 'Not reported'],
+      ['Stars / forks', String(repo.stars ?? 'Unknown') + ' / ' + String(repo.forks ?? 'Unknown')],
+      ['Open issues', repo.openIssuesCount ?? 'Unknown'],
+      ['Last push', repo.pushedAt ? formatDate(repo.pushedAt) : 'Not reported'],
+      ['License', repo.license || 'Not reported'],
+      ['Latest release', health.sample && health.sample.releaseAvailable ? 'Found' : 'Not returned'],
+    ].map((item) => '<div><span>' + escapeHtml(item[0]) + '</span><strong>' + escapeHtml(item[1]) + '</strong></div>').join('') + '</div>' +
+    '<div class="intel-results-grid"><section class="intel-result-card"><span class="card-kicker">OBSERVED SIGNALS</span><h4>What the snapshot shows</h4>' +
+    '<ul class="intel-finding-list">' + (health.signals || []).map((signal) => '<li><strong>' + escapeHtml(signal.label) + '</strong><p>' +
+      escapeHtml(signal.detail) + '</p>' + renderIntelSourceLinks(health.sources, signal.sourceIds) + '</li>').join('') + '</ul></section>' +
+    '<section class="intel-result-card"><span class="card-kicker">PRIORITIZED ACTIONS</span><h4>Read-only revival plan</h4>' +
+    (health.revivalPlan || []).map((step) => '<article class="intel-plan-step"><span class="pill ' + (step.priority === 'P1' ? 'warn' : 'neutral') +
+      '">' + escapeHtml(step.priority) + '</span><h4>' + escapeHtml(step.title) + '</h4><p>' + escapeHtml(step.action) + '</p><p>' +
+      escapeHtml(step.why) + '</p><small>Verify: ' + escapeHtml(step.verification || '') + '</small><small>Estimate: ' +
+      escapeHtml(step.estimate || 'Not estimated') + '</small>' + renderIntelSourceLinks(health.sources, step.sourceIds) + '</article>').join('') +
+    '</section></div>' +
+    '<section class="intel-result-card"><span class="card-kicker">CONTRIBUTION LEADS</span><h4>Existing issues to inspect</h4>' +
+    ((health.contributionOpportunities || []).length ? '<ul class="intel-finding-list">' + health.contributionOpportunities.map((opportunity) =>
+      '<li><a href="' + escapeHtml(intelSafeUrl(opportunity.url)) + '" target="_blank" rel="noopener noreferrer">' +
+      escapeHtml(opportunity.title) + ' ↗</a><p>' + escapeHtml(opportunity.detail) + '</p><p>' + escapeHtml(opportunity.complexity) + '</p>' +
+      renderIntelSourceLinks(health.sources, opportunity.sourceIds) + '</li>').join('') + '</ul>' :
+      renderIntelEmpty('No open issue was returned in the current sample. Inspect the project documentation and current issue list before choosing a contribution.')) +
+    '</section><section class="intel-limitations"><strong>Scope and limitations</strong><p>Observed ' + escapeHtml(formatDate(health.observedAt)) +
+    '. Sample inspected: ' + escapeHtml(health.sample.commitCount) + ' commits and ' + escapeHtml(health.sample.openIssueCount) +
+    ' open issues. ' + escapeHtml(health.sample.note) + '</p><ul>' + (health.limitations || []).map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></section>';
+}
+
+function renderIntelRecommendations(recommendations) {
+  if (!recommendations || recommendations.kind !== 'repository-recommendations') return renderIntelError('The server did not return repository recommendations.');
+  return '<div class="intel-result-heading"><div><span class="card-kicker">PROJECT DISCOVERY / @' + escapeHtml(recommendations.account) +
+    '</span><h3>Matches for your goal</h3></div></div><section class="intel-summary"><p>' + escapeHtml(recommendations.summary) +
+    '</p></section>' +
+    ((recommendations.recommendations || []).length ? '<div class="intel-recommendation-list">' + recommendations.recommendations.map((item) =>
+      '<article class="intel-project"><div class="intel-project-head"><div><a href="' + escapeHtml(intelSafeUrl(item.url)) +
+      '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.fullName) + ' ↗</a><p>' + escapeHtml(item.description) +
+      '</p></div><span class="pill neutral">MATCH ' + item.rank + '</span></div><div class="intel-term-list">' +
+      (item.matchedTerms || []).map((term) => '<span>' + escapeHtml(term) + '</span>').join('') + '</div><ul class="intel-mini-list">' +
+      (item.reasons || []).map((reason) => '<li>' + escapeHtml(reason) + '</li>').join('') + '</ul>' +
+      '<div class="intel-snapshot-grid"><div><span>Language</span><strong>' + escapeHtml(item.language || 'Not reported') + '</strong></div><div><span>License</span><strong>' +
+      escapeHtml(item.license || 'Not reported') + '</strong></div><div><span>Last push</span><strong>' + escapeHtml(item.pushedAt ? formatDate(item.pushedAt) : 'Not reported') +
+      '</strong></div><div><span>Archived</span><strong>' + (item.archived ? 'Yes' : 'Not marked archived') + '</strong></div></div>' +
+      renderIntelSourceLinks(recommendations.sources, item.sourceIds) +
+      ((item.contributionOpportunities || []).length ? '<h4>Issue leads to verify</h4><ul class="intel-mini-list">' + item.contributionOpportunities.map((lead) =>
+        '<li><a href="' + escapeHtml(intelSafeUrl(lead.url)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(lead.title) + ' ↗</a><p>' +
+        escapeHtml(lead.detail) + '</p>' + renderIntelSourceLinks(recommendations.sources, lead.sourceIds) + '</li>').join('') + '</ul>' : '') +
+      '<h4>Suggested next actions</h4><ol class="intel-mini-list">' + (item.nextSteps || []).map((step) => '<li>' + escapeHtml(step) + '</li>').join('') + '</ol></article>').join('') +
+      '</div>' : renderIntelEmpty('No clear metadata match was found. Try a more specific use case or a broader search.')) +
+    '<section class="intel-next-step"><strong>Contribution safety</strong><p>' + escapeHtml(recommendations.contributionGuidance) +
+    '</p></section><section class="intel-limitations"><strong>Scope and limitations</strong><ul>' +
+    (recommendations.limitations || []).map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></section>' +
+    ((recommendations.collectionWarnings || []).length ? '<section class="intel-limitations"><strong>Incomplete evidence collection</strong><ul>' +
+      recommendations.collectionWarnings.map((item) => '<li>' + escapeHtml(item.repository + ': ' + item.message) + '</li>').join('') + '</ul></section>' : '');
+}
+
+function bindIntelligenceForm(formId, endpoint, responseKey, payloadBuilder, renderer, loadingMessage) {
+  const formElement = document.getElementById(formId);
+  if (!formElement) return;
+  const output = document.getElementById(formId.replace('-form', '-result'));
+  const button = formElement.querySelector('button[type="submit"]');
+  const buttonLabel = button && button.querySelector('span:first-child');
+  const originalLabel = buttonLabel ? buttonLabel.textContent : '';
+  formElement.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!output || !button) return;
+    const value = (name) => {
+      const field = formElement.elements.namedItem(name);
+      return field && typeof field.value === 'string' ? field.value.trim() : '';
+    };
+    output.innerHTML = renderIntelLoading(loadingMessage);
+    output.setAttribute('aria-busy', 'true');
+    button.disabled = true;
+    if (buttonLabel) buttonLabel.textContent = 'Working…';
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payloadBuilder(value)),
+      });
+      let payload;
+      try { payload = await response.json(); }
+      catch { throw new Error('The server returned a response RepoGhost could not read. Please try again.'); }
+      if (!response.ok) throw new Error(payload.error && payload.error.message || 'The investigation failed (HTTP ' + response.status + ').');
+      if (!payload[responseKey]) throw new Error('The server did not return the expected evidence report.');
+      output.innerHTML = renderer(payload[responseKey]);
+    } catch (error) {
+      output.innerHTML = renderIntelError(error.message || 'Something went wrong. Please try again.');
+    } finally {
+      output.setAttribute('aria-busy', 'false');
+      button.disabled = false;
+      if (buttonLabel) buttonLabel.textContent = originalLabel;
+    }
+  });
+}
+
+document.querySelectorAll('[data-intel-tab]').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    const name = tab.getAttribute('data-intel-tab');
+    document.querySelectorAll('[data-intel-tab]').forEach((item) => {
+      const selected = item === tab;
+      item.classList.toggle('is-active', selected);
+      item.setAttribute('aria-selected', String(selected));
+      item.tabIndex = selected ? 0 : -1;
+    });
+    document.querySelectorAll('[data-intel-panel]').forEach((panel) => {
+      panel.hidden = panel.getAttribute('data-intel-panel') !== name;
+    });
+  });
+});
+
+bindIntelligenceForm('intel-assess-form', '/api/intelligence/assess', 'assessment', (value) => ({
+  username: value('username'),
+  role: value('role'),
+  context: value('context'),
+}), renderIntelAssessment, 'Assessing public developer evidence…');
+
+bindIntelligenceForm('intel-compare-form', '/api/intelligence/compare', 'comparison', (value) => ({
+  usernameA: value('usernameA'),
+  usernameB: value('usernameB'),
+  goal: value('goal'),
+}), renderIntelComparison, 'Comparing public account evidence…');
+
+bindIntelligenceForm('intel-health-form', '/api/intelligence/health', 'health', (value) => ({
+  repositoryUrl: value('repositoryUrl'),
+}), renderIntelHealth, 'Inspecting repository health signals…');
+
+bindIntelligenceForm('intel-recommend-form', '/api/intelligence/recommend', 'recommendations', (value) => ({
+  username: value('username'),
+  goal: value('goal'),
+}), renderIntelRecommendations, 'Finding role- and goal-relevant repositories…');

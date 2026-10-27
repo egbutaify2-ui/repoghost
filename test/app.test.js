@@ -26,6 +26,11 @@ const {
   parseModelJson,
   validateAccountAnswer,
   validateAnalysis,
+  rankRepositories,
+  buildDeveloperAssessment,
+  buildDeveloperComparison,
+  buildRepositoryHealth,
+  buildRepositoryRecommendations,
 } = require('../server');
 
 const meta = {
@@ -957,6 +962,257 @@ test('serves username-only GitHub search with repository evidence and account ch
   assert.match(page, /data-username="nodejs"/);
   assert.doesNotMatch(page, /id="repository-url"/);
   assert.doesNotMatch(page, /Repository URL/);
+});
+
+
+
+function intelligenceDiscovery(login, repositories) {
+  return {
+    account: {
+      login,
+      type: 'User',
+      name: login + ' developer',
+      bio: 'Public software projects',
+      url: 'https://github.com/' + login,
+      publicRepos: repositories.length,
+      followers: 4,
+    },
+    repositories: repositories.map((repository, index) => ({
+      id: index + 100,
+      name: repository.name,
+      fullName: repository.fullName,
+      url: repository.url,
+      description: repository.description || null,
+      language: repository.language || null,
+      stars: Number.isFinite(repository.stars) ? repository.stars : 0,
+      forks: Number.isFinite(repository.forks) ? repository.forks : 0,
+      openIssuesCount: Number.isFinite(repository.openIssuesCount) ? repository.openIssuesCount : 0,
+      pushedAt: repository.pushedAt || null,
+      updatedAt: repository.updatedAt || null,
+      createdAt: repository.createdAt || null,
+      archived: repository.archived === true,
+      fork: false,
+      defaultBranch: 'main',
+      license: repository.license || null,
+      topics: repository.topics || [],
+    })),
+    returnedCount: repositories.length,
+    limitReached: false,
+  };
+}
+
+function intelligenceRepositoryEvidence(fullName, options = {}) {
+  const [owner, name] = fullName.split('/');
+  const baseUrl = 'https://github.com/' + owner + '/' + name;
+  const readme = options.readme === false ? null : {
+    path: 'README.md',
+    url: baseUrl + '/blob/main/README.md',
+    content: options.readmeContent || '# Mobile app\n\nInstall and setup instructions. Testing guide. Contributions welcome.',
+    truncated: false,
+  };
+  const issue = options.issue === false ? null : {
+    number: 23,
+    title: 'Document offline retry behavior',
+    state: 'open',
+    createdAt: '2025-04-01T12:00:00Z',
+    updatedAt: '2025-04-01T12:00:00Z',
+    comments: 2,
+    body: 'Document expected retry behavior.',
+    url: baseUrl + '/issues/23',
+  };
+  const commit = {
+    sha: 'abcdef123456',
+    message: 'Add mobile navigation',
+    date: '2026-10-20T12:00:00Z',
+    author: 'Contributor',
+    url: baseUrl + '/commit/abcdef123456',
+  };
+  const archived = options.archived === true;
+  const repository = {
+    fullName,
+    url: baseUrl,
+    description: 'React Native mobile app using Expo',
+    language: 'TypeScript',
+    stars: 4,
+    forks: 1,
+    openIssuesCount: issue ? 1 : 0,
+    archived,
+    disabled: false,
+    createdAt: '2022-01-01T12:00:00Z',
+    updatedAt: '2025-04-01T12:00:00Z',
+    pushedAt: options.pushedAt || '2025-04-01T12:00:00Z',
+    defaultBranch: 'main',
+    license: options.license === undefined ? 'MIT License' : options.license,
+    topics: ['react-native', 'mobile'],
+  };
+  const sources = [{ id: 'repository', type: 'repository', title: 'Repository overview', url: baseUrl }];
+  if (readme) sources.push({ id: 'readme', type: 'readme', title: 'README · README.md', url: readme.url });
+  sources.push({ id: 'commit-abcdef123456', type: 'commit', title: 'Commit abcdef123456', url: commit.url });
+  if (issue) sources.push({ id: 'issue-23', type: 'issue', title: '#23 ' + issue.title, url: issue.url });
+  return {
+    repository,
+    readme,
+    commits: [commit],
+    latestCommitAt: commit.date,
+    issues: issue ? [issue] : [],
+    issuePullRequestNote: 'Pull requests excluded.',
+    release: null,
+    sources,
+  };
+}
+
+test('ranks role-relevant projects and builds an evidence-backed developer assessment', () => {
+  const discovery = intelligenceDiscovery('alpha', [
+    {
+      name: 'mobile-app', fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app',
+      description: 'React Native app built with Expo', language: 'TypeScript', stars: 3,
+      license: 'MIT License', archived: false, pushedAt: '2026-10-20T12:00:00Z',
+    },
+    {
+      name: 'api-service', fullName: 'alpha/api-service', url: 'https://github.com/alpha/api-service',
+      description: 'Node.js REST backend service', language: 'JavaScript', stars: 80,
+      license: 'MIT License', archived: false, pushedAt: '2026-10-19T12:00:00Z',
+    },
+  ]);
+  const ranked = rankRepositories(discovery.repositories, 'React Native Engineer');
+  assert.equal(ranked[0].repository.fullName, 'alpha/mobile-app');
+  assert.ok(ranked[0].matchedTerms.includes('react native') || ranked[0].matchedTerms.includes('expo'));
+
+  const assessment = buildDeveloperAssessment(
+    discovery,
+    'React Native Engineer',
+    'Build and maintain a cross-platform mobile app',
+    [intelligenceRepositoryEvidence('alpha/mobile-app')],
+  );
+  assert.equal(assessment.kind, 'developer-assessment');
+  assert.equal(assessment.account.login, 'alpha');
+  assert.equal(assessment.role, 'React Native Engineer');
+  assert.equal(assessment.relevantProjects[0].fullName, 'alpha/mobile-app');
+  assert.ok(assessment.relevantProjects[0].matchedTerms.length > 0);
+  assert.ok(assessment.demonstratedTechnologies.some((item) => /typescript/i.test(item.technology)));
+  assert.ok(assessment.interviewQuestions.length >= 3);
+  assert.ok(assessment.evidenceGaps.some((item) => /cannot establish|cannot prove/i.test(item)));
+  const sourceIds = new Set(assessment.sources.map((source) => source.id));
+  for (const strength of assessment.strengths) {
+    for (const sourceId of strength.sourceIds) assert.ok(sourceIds.has(sourceId));
+  }
+});
+
+test('comparison keeps both accounts and their citations distinct and uses explicit criteria', () => {
+  const leftDiscovery = intelligenceDiscovery('alpha', [{
+    name: 'mobile-app', fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app',
+    description: 'React Native mobile app with Expo', language: 'TypeScript', license: 'MIT License',
+    archived: false, pushedAt: '2026-10-20T12:00:00Z',
+  }]);
+  const rightDiscovery = intelligenceDiscovery('beta', [{
+    name: 'api-service', fullName: 'beta/api-service', url: 'https://github.com/beta/api-service',
+    description: 'Node.js API backend', language: 'JavaScript', license: 'MIT License',
+    archived: false, pushedAt: '2026-09-20T12:00:00Z',
+  }]);
+  const left = buildDeveloperAssessment(leftDiscovery, 'React Native Engineer', '', [intelligenceRepositoryEvidence('alpha/mobile-app')]);
+  const right = buildDeveloperAssessment(rightDiscovery, 'React Native Engineer', '', [intelligenceRepositoryEvidence('beta/api-service')]);
+  const comparison = buildDeveloperComparison(left, right, 'React Native Engineer');
+  assert.equal(comparison.kind, 'developer-comparison');
+  assert.equal(comparison.left.account.login, 'alpha');
+  assert.equal(comparison.right.account.login, 'beta');
+  assert.ok(comparison.criteria.length >= 3);
+  assert.ok(comparison.left.sources.every((source) => !source.url.includes('github.com/beta/')));
+  assert.ok(comparison.right.sources.every((source) => !source.url.includes('github.com/alpha/')));
+  assert.match(comparison.summary, /public evidence|repository matches|metadata/i);
+});
+
+test('repository health report handles archived state, stale sampled issues, missing release, and read-only revival actions', () => {
+  const evidence = intelligenceRepositoryEvidence('alpha/mobile-app', { archived: true, pushedAt: '2024-01-01T00:00:00Z', readme: false });
+  const report = buildRepositoryHealth(evidence);
+  assert.equal(report.kind, 'repository-health');
+  assert.equal(report.repository.archived, true);
+  assert.ok(report.signals.some((signal) => /archived status/i.test(signal.label)));
+  assert.ok(report.signals.some((signal) => /older open issues/i.test(signal.label)));
+  assert.ok(report.signals.some((signal) => /readme unavailable/i.test(signal.label)));
+  assert.equal(report.revivalPlan.length, 3);
+  assert.match(report.revivalPlan[0].title, /confirm whether the project should be revived/i);
+  assert.ok(report.contributionOpportunities.some((item) => /#23/.test(item.title)));
+  assert.ok(report.revivalPlan.every((item) => item.sourceIds.every((id) => evidence.sources.some((source) => source.id === id))));
+  assert.ok(report.limitations.some((item) => /does not run code/i.test(item)));
+});
+
+test('repository recommendations use goal relevance, real repository links, and current issue evidence', () => {
+  const discovery = intelligenceDiscovery('alpha', [
+    {
+      name: 'mobile-app', fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app',
+      description: 'React Native mobile app using Expo', language: 'TypeScript', license: 'MIT License',
+      archived: false, pushedAt: '2026-10-20T12:00:00Z',
+    },
+    {
+      name: 'api-service', fullName: 'alpha/api-service', url: 'https://github.com/alpha/api-service',
+      description: 'Node.js REST backend', language: 'JavaScript', license: null,
+      archived: false, pushedAt: '2026-10-19T12:00:00Z',
+    },
+  ]);
+  const report = buildRepositoryRecommendations(discovery, 'React Native app', [
+    intelligenceRepositoryEvidence('alpha/mobile-app'),
+  ]);
+  assert.equal(report.kind, 'repository-recommendations');
+  assert.equal(report.recommendations[0].fullName, 'alpha/mobile-app');
+  assert.match(report.recommendations[0].url, /^https:\/\/github\.com\/alpha\/mobile-app$/);
+  assert.ok(report.recommendations[0].contributionOpportunities.some((item) => /#23/.test(item.title)));
+  const noMatch = buildRepositoryRecommendations(discovery, 'quantum compiler for COBOL', []);
+  assert.equal(noMatch.recommendations.length, 0);
+  assert.match(noMatch.summary, /did not contain a clear match/i);
+});
+
+test('all four developer-intelligence endpoints return structured evidence reports and reject identical comparisons', async (t) => {
+  const makeDiscovery = (input) => {
+    const login = String(input).replace(/^@/, '').replace(/^https:\/\/github\.com\//, '').split('/')[0];
+    return intelligenceDiscovery(login, [{
+      name: 'mobile-app', fullName: login + '/mobile-app',
+      url: 'https://github.com/' + login + '/mobile-app',
+      description: 'React Native mobile app using Expo', language: 'TypeScript',
+      stars: 4, forks: 1, license: 'MIT License', archived: false,
+      pushedAt: '2026-10-20T12:00:00Z', updatedAt: '2026-10-20T12:00:00Z',
+    }]);
+  };
+  const server = createServer({
+    logger: { error() {} },
+    discoverRepositories: async (username) => makeDiscovery(username),
+    getRepositoryEvidence: async (url) => {
+      const match = new URL(url).pathname.split('/').filter(Boolean);
+      return intelligenceRepositoryEvidence(match[0] + '/' + match[1]);
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const root = 'http://127.0.0.1:' + server.address().port;
+  const post = async (path, body) => {
+    const response = await fetch(root + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json();
+    return { response, payload };
+  };
+
+  const assessment = await post('/api/intelligence/assess', { username: 'alpha', role: 'React Native Engineer', context: '' });
+  assert.equal(assessment.response.status, 200);
+  assert.equal(assessment.payload.assessment.kind, 'developer-assessment');
+
+  const comparison = await post('/api/intelligence/compare', { usernameA: 'alpha', usernameB: 'beta', goal: 'React Native Engineer' });
+  assert.equal(comparison.response.status, 200);
+  assert.equal(comparison.payload.comparison.left.account.login, 'alpha');
+  assert.equal(comparison.payload.comparison.right.account.login, 'beta');
+
+  const health = await post('/api/intelligence/health', { repositoryUrl: 'https://github.com/alpha/mobile-app' });
+  assert.equal(health.response.status, 200);
+  assert.equal(health.payload.health.kind, 'repository-health');
+
+  const recommendations = await post('/api/intelligence/recommend', { username: 'alpha', goal: 'React Native mobile app' });
+  assert.equal(recommendations.response.status, 200);
+  assert.equal(recommendations.payload.recommendations.kind, 'repository-recommendations');
+
+  const sameAccount = await post('/api/intelligence/compare', { usernameA: 'alpha', usernameB: 'alpha', goal: 'React Native Engineer' });
+  assert.equal(sameAccount.response.status, 400);
+  assert.equal(sameAccount.payload.error.code, 'SAME_ACCOUNT_COMPARISON');
 });
 
 test('parses a fenced JSON response if the provider wraps it in a fence', () => {

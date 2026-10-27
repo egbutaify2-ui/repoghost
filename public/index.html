@@ -78,6 +78,68 @@
         </div>
       </section>
 
+      <section id="intelligence-suite" class="intelligence-suite" aria-labelledby="intelligence-heading">
+        <div class="panel-heading intelligence-suite-heading">
+          <div><span class="section-index">02 / DEVELOPER INTELLIGENCE</span><h2 id="intelligence-heading">Turn GitHub evidence into a next move</h2><p class="intelligence-intro">Assess a portfolio, compare two public accounts, investigate a project’s maintenance signals, or find a useful repository to explore. Every result stays read-only and source-linked.</p></div>
+          <span class="panel-code">FOUR WORKFLOWS / PUBLIC EVIDENCE</span>
+        </div>
+        <div class="intelligence-tabs" role="tablist" aria-label="Developer intelligence tools">
+          <button type="button" class="intelligence-tab is-active" id="tab-assess" role="tab" aria-selected="true" aria-controls="panel-assess" data-intel-tab="assess">Developer assessment</button>
+          <button type="button" class="intelligence-tab" id="tab-compare" role="tab" aria-selected="false" aria-controls="panel-compare" data-intel-tab="compare">Compare accounts</button>
+          <button type="button" class="intelligence-tab" id="tab-health" role="tab" aria-selected="false" aria-controls="panel-health" data-intel-tab="health">Project revival</button>
+          <button type="button" class="intelligence-tab" id="tab-recommend" role="tab" aria-selected="false" aria-controls="panel-recommend" data-intel-tab="recommend">Find a project</button>
+        </div>
+
+        <section class="intelligence-workflow" id="panel-assess" role="tabpanel" aria-labelledby="tab-assess" data-intel-panel="assess">
+          <div class="intelligence-workflow-copy"><span class="card-kicker">A / PORTFOLIO REVIEW</span><h3>Assess a developer for a specific role</h3><p>Find relevant public projects, technology signals, evidence gaps, and role-specific interview questions. This is a screening aid, not a hiring verdict.</p></div>
+          <form id="intel-assess-form" class="intelligence-form">
+            <div class="intelligence-fields two-col">
+              <label>GitHub username or profile URL<input name="username" type="text" maxlength="2048" placeholder="e.g. octocat" autocomplete="off" required></label>
+              <label>Target role<select name="role" required><option value="React Native Engineer">React Native Engineer</option><option value="Frontend Engineer">Frontend Engineer</option><option value="Backend Engineer">Backend Engineer</option><option value="Full-Stack Engineer">Full-Stack Engineer</option><option value="AI Engineer">AI Engineer</option><option value="Open-Source Contributor">Open-Source Contributor</option><option value="Software Engineer">Software Engineer</option></select></label>
+              <label class="field-wide">Evaluation context (optional)<textarea name="context" maxlength="500" rows="2" placeholder="Key requirements, technologies, or seniority to consider"></textarea></label>
+            </div>
+            <button type="submit" class="intelligence-submit"><span>Assess public evidence</span><span aria-hidden="true">↗</span></button>
+          </form>
+          <div id="intel-assess-result" class="intelligence-result" aria-live="polite"></div>
+        </section>
+
+        <section class="intelligence-workflow" id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" data-intel-panel="compare" hidden>
+          <div class="intelligence-workflow-copy"><span class="card-kicker">B / SIDE-BY-SIDE REVIEW</span><h3>Compare two GitHub accounts</h3><p>Compare role-relevant repositories, visible technology signals, and activity. The criteria are explicit; repository totals are not treated as engineering quality.</p></div>
+          <form id="intel-compare-form" class="intelligence-form">
+            <div class="intelligence-fields two-col">
+              <label>First GitHub username<input name="usernameA" type="text" maxlength="2048" placeholder="e.g. octocat" autocomplete="off" required></label>
+              <label>Second GitHub username<input name="usernameB" type="text" maxlength="2048" placeholder="e.g. torvalds" autocomplete="off" required></label>
+              <label class="field-wide">Role or comparison objective<input name="goal" type="text" maxlength="160" placeholder="e.g. React Native Engineer" required></label>
+            </div>
+            <button type="submit" class="intelligence-submit"><span>Compare evidence</span><span aria-hidden="true">↗</span></button>
+          </form>
+          <div id="intel-compare-result" class="intelligence-result" aria-live="polite"></div>
+        </section>
+
+        <section class="intelligence-workflow" id="panel-health" role="tabpanel" aria-labelledby="tab-health" data-intel-panel="health" hidden>
+          <div class="intelligence-workflow-copy"><span class="card-kicker">C / REPOSITORY RESURRECTION</span><h3>Find what may need attention</h3><p>Inspect bounded public evidence for activity, open-issue patterns, documentation signals, and practical contribution steps. Inactivity alone is not proof that a project is abandoned.</p></div>
+          <form id="intel-health-form" class="intelligence-form">
+            <div class="intelligence-fields">
+              <label>Public GitHub repository URL<input name="repositoryUrl" type="url" inputmode="url" maxlength="2048" placeholder="https://github.com/owner/repository" required></label>
+            </div>
+            <button type="submit" class="intelligence-submit"><span>Investigate project health</span><span aria-hidden="true">↗</span></button>
+          </form>
+          <div id="intel-health-result" class="intelligence-result" aria-live="polite"></div>
+        </section>
+
+        <section class="intelligence-workflow" id="panel-recommend" role="tabpanel" aria-labelledby="tab-recommend" data-intel-panel="recommend" hidden>
+          <div class="intelligence-workflow-copy"><span class="card-kicker">D / DISCOVERY & NEXT ACTIONS</span><h3>Choose a project worth exploring</h3><p>Match public repositories to a use case, inspect available licenses and contributor signals, and get practical next steps without automatically writing to GitHub.</p></div>
+          <form id="intel-recommend-form" class="intelligence-form">
+            <div class="intelligence-fields two-col">
+              <label>GitHub username or organization<input name="username" type="text" maxlength="2048" placeholder="e.g. expressjs" autocomplete="off" required></label>
+              <label>What are you trying to build or contribute to?<textarea name="goal" maxlength="240" rows="2" placeholder="e.g. an AI camera compatibility agent" required></textarea></label>
+            </div>
+            <button type="submit" class="intelligence-submit"><span>Find relevant repositories</span><span aria-hidden="true">↗</span></button>
+          </form>
+          <div id="intel-recommend-result" class="intelligence-result" aria-live="polite"></div>
+        </section>
+      </section>
+
       <section id="results" class="results-section" aria-live="polite" aria-busy="false" hidden>
         <div class="results-header">
           <div><span class="section-index">02 / CASE FILE</span><h2>Account and repository results</h2></div>
