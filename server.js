@@ -70,6 +70,40 @@ function parseGithubRepoUrl(input) {
   return { owner, repo, fullName: `${owner}/${repo}`, url: `https://github.com/${owner}/${repo}` };
 }
 
+function parseGithubAccountName(input) {
+  if (typeof input !== 'string' || input.trim().length === 0) {
+    throw new HttpError(400, 'INVALID_GITHUB_ACCOUNT', 'Enter a GitHub username or organization name.');
+  }
+  if (input.length > 2_048) {
+    throw new HttpError(400, 'INVALID_GITHUB_ACCOUNT', 'That value is too long to be a GitHub account name.');
+  }
+
+  let value = input.trim();
+  if (value.startsWith('@')) value = value.slice(1);
+  if (/^https?:\/\//i.test(value)) {
+    let parsed;
+    try { parsed = new URL(value); } catch {
+      throw new HttpError(400, 'INVALID_GITHUB_ACCOUNT', 'Enter a GitHub username or a public GitHub profile URL.');
+    }
+    if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== 'github.com' || parsed.username || parsed.password || parsed.port) {
+      throw new HttpError(400, 'INVALID_GITHUB_ACCOUNT', 'Only public GitHub profile URLs are supported.');
+    }
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if (parts.length !== 1) {
+      throw new HttpError(400, 'INVALID_GITHUB_ACCOUNT', 'Enter a username or profile URL, not a repository URL.');
+    }
+    try { value = decodeURIComponent(parts[0]); } catch {
+      throw new HttpError(400, 'INVALID_GITHUB_ACCOUNT', 'The GitHub account name contains invalid URL encoding.');
+    }
+  }
+
+  const accountPattern = /^(?!-)[A-Za-z0-9-]{1,39}(?<!-)$/;
+  if (!accountPattern.test(value)) {
+    throw new HttpError(400, 'INVALID_GITHUB_ACCOUNT', 'GitHub account names must contain 1–39 letters, numbers, or hyphens and cannot start or end with a hyphen.');
+  }
+  return value;
+}
+
 function safeDate(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -148,6 +182,75 @@ async function fetchJson(fetchImpl, url, options = {}) {
   } catch {
     throw new HttpError(502, 'GITHUB_BAD_RESPONSE', 'GitHub returned a response that RepoGhost could not read.');
   }
+}
+
+async function discoverRepositories(input, options = {}) {
+  const accountName = parseGithubAccountName(input);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const apiBase = (options.githubApiBaseUrl || 'https://api.github.com').replace(/\/$/, '');
+  const authState = { disableAuth: false };
+
+  let account;
+  try {
+    account = await fetchJson(fetchImpl, `${apiBase}/users/${encodeURIComponent(accountName)}`, {
+      headers: githubHeaders(),
+      authState,
+    });
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      throw new HttpError(404, 'GITHUB_ACCOUNT_NOT_FOUND', `GitHub account "${accountName}" was not found or has no public profile.`);
+    }
+    throw error;
+  }
+
+  const isOrganization = String(account.type || '').toLowerCase() === 'organization';
+  const endpoint = isOrganization
+    ? `${apiBase}/orgs/${encodeURIComponent(accountName)}/repos?per_page=100&sort=pushed&direction=desc&type=public`
+    : `${apiBase}/users/${encodeURIComponent(accountName)}/repos?per_page=100&sort=pushed&direction=desc&type=owner`;
+  const payload = await fetchJson(fetchImpl, endpoint, { headers: githubHeaders(), authState });
+  if (!Array.isArray(payload)) {
+    throw new HttpError(502, 'GITHUB_BAD_RESPONSE', 'GitHub returned an unexpected repository list format.');
+  }
+
+  const repositories = payload
+    .filter((repository) => repository && repository.private !== true)
+    .map((repository) => {
+      const fullName = String(repository.full_name || `${accountName}/${repository.name || 'repository'}`).slice(0, 160);
+      const safeFullName = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(fullName) ? fullName : `${accountName}/${String(repository.name || 'repository').replace(/[^A-Za-z0-9_.-]/g, '')}`;
+      return {
+        id: Number.isSafeInteger(repository.id) ? repository.id : null,
+        name: String(repository.name || safeFullName.split('/')[1]).slice(0, 100),
+        fullName: safeFullName,
+        url: `https://github.com/${safeFullName}`,
+        description: typeof repository.description === 'string' ? repository.description.slice(0, 500) : null,
+        language: typeof repository.language === 'string' ? repository.language.slice(0, 80) : null,
+        stars: Number.isFinite(repository.stargazers_count) ? Math.max(0, repository.stargazers_count) : 0,
+        forks: Number.isFinite(repository.forks_count) ? Math.max(0, repository.forks_count) : 0,
+        openIssuesCount: Number.isFinite(repository.open_issues_count) ? Math.max(0, repository.open_issues_count) : 0,
+        pushedAt: safeDate(repository.pushed_at),
+        updatedAt: safeDate(repository.updated_at),
+        createdAt: safeDate(repository.created_at),
+        archived: repository.archived === true,
+        fork: repository.fork === true,
+        defaultBranch: typeof repository.default_branch === 'string' ? repository.default_branch.slice(0, 100) : null,
+        license: repository.license && typeof repository.license.name === 'string' ? repository.license.name.slice(0, 100) : null,
+      };
+    });
+
+  return {
+    account: {
+      login: String(account.login || accountName).slice(0, 39),
+      type: isOrganization ? 'Organization' : 'User',
+      name: typeof account.name === 'string' && account.name.trim() ? account.name.slice(0, 160) : null,
+      bio: typeof account.bio === 'string' && account.bio.trim() ? account.bio.slice(0, 500) : null,
+      url: `https://github.com/${encodeURIComponent(account.login || accountName)}`,
+      publicRepos: Number.isFinite(account.public_repos) ? Math.max(0, account.public_repos) : repositories.length,
+      followers: Number.isFinite(account.followers) ? Math.max(0, account.followers) : null,
+    },
+    repositories,
+    returnedCount: repositories.length,
+    limitReached: payload.length >= 100,
+  };
 }
 
 async function fetchReadme(fetchImpl, apiBase, fullName, options = {}) {
@@ -596,6 +699,7 @@ function serveStatic(req, res, pathname) {
 function createServer(dependencies = {}) {
   const getEvidence = dependencies.getRepositoryEvidence || getRepositoryEvidence;
   const getAnalysis = dependencies.analyzeEvidence || analyzeEvidence;
+  const discover = dependencies.discoverRepositories || discoverRepositories;
   const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
   const logger = dependencies.logger || console;
   return http.createServer(async (req, res) => {
@@ -606,6 +710,23 @@ function createServer(dependencies = {}) {
 
     if (req.method === 'GET' && pathname === '/api/health') {
       return sendJson(res, 200, { status: 'ok', service: 'RepoGhost', aiConfigured: Boolean(process.env.OPENROUTER_API_KEY), model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL }, requestId);
+    }
+
+    if (req.method === 'POST' && pathname === '/api/discover') {
+      let body;
+      try { body = await readJsonBody(req); }
+      catch (error) {
+        const status = error instanceof HttpError ? error.status : 400;
+        return sendJson(res, status, { error: { code: error.code || 'INVALID_REQUEST', message: error.message }, requestId }, requestId);
+      }
+      try {
+        const discovery = await discover(body.username ?? body.account, { fetchImpl });
+        return sendJson(res, 200, { discovery, requestId }, requestId);
+      } catch (error) {
+        const status = error instanceof HttpError ? error.status : 500;
+        if (status >= 500) logger.error?.(`[RepoGhost ${requestId}] ${error.code || error.name || 'ERROR'}`);
+        return sendJson(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message || 'Repository discovery failed. Please try again.' }, requestId }, requestId);
+      }
     }
     if (req.method === 'POST' && pathname === '/api/investigate') {
       let body;
@@ -647,7 +768,9 @@ module.exports = {
   compactEvidenceForModel,
   createServer,
   getRepositoryEvidence,
+  parseGithubAccountName,
   parseGithubRepoUrl,
+  discoverRepositories,
   parseModelJson,
   validateAnalysis,
 };
