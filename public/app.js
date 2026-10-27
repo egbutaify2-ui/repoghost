@@ -140,10 +140,10 @@ function renderAccountChatPanel(accountLogin) {
     <div class="account-chat-heading">
       <span class="card-kicker">ACCOUNT INTELLIGENCE / FOLLOW-UP</span>
       <h3>Ask about @${escapeHtml(accountLogin)}</h3>
-      <p>Ask questions about public repositories, languages, activity, and sampled recent commits. Answers must cite evidence.</p>
+      <p>Ask evidence-backed questions about public repositories, languages, and activity. For deeper workflows, use Developer Intelligence to assess a role, compare two accounts, investigate repository health, or discover projects to explore.</p>
     </div>
     <div id="account-chat-messages" class="account-chat-messages" aria-live="polite">
-      <div class="account-chat-empty"><strong>What would you like to know?</strong><p>Try “Which projects show the strongest recent activity?” or “What languages appear most often?”</p></div>
+      <div class="account-chat-empty"><strong>What would you like to know?</strong><p>Try “Which project best matches a React Native role?” or “What public evidence supports this developer’s recent work?”</p></div>
     </div>
     <form id="account-chat-form" class="account-chat-form">
       <label class="sr-only" for="account-chat-question">Question about this GitHub account</label>
@@ -365,7 +365,7 @@ function clearFormError() {
 function showDiscoveryLoading() {
   resultsSection.hidden = false;
   resultsSection.setAttribute('aria-busy', 'true');
-  resultsContent.innerHTML = `<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Tracing this GitHub account…</strong><p>Finding public repositories and sorting them by recent activity. RepoGhost will not modify any repository.</p></div></div>`;
+  resultsContent.innerHTML = `<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Tracing this GitHub account…</strong><p>Finding public repositories and preparing your investigation. You can then inspect evidence, compare accounts, assess role relevance, investigate health, or find contribution opportunities.</p></div></div>`;
 }
 
 async function discoverAccount(username) {

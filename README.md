@@ -1,10 +1,19 @@
 # RepoGhost
 
-**Evidence-backed archaeology for public GitHub repositories.** RepoGhost follows README, commit, release, and issue trails so a new maintainer can understand a codebase without confusing observable facts with guesses about the people who built it.
+**Evidence-backed intelligence for public GitHub developers and repositories.** RepoGhost helps people understand public developer portfolios, compare accounts against a role or use case, investigate repository health, and find relevant projects or contribution leads. Findings link back to GitHub sources, uncertainty stays visible, and recommendations never pretend to reveal private work or prove a person’s ability.
 
 > RepoGhost is read-only. It does not clone repositories, execute repository code, open user-supplied links from repository text, or change the repository it investigates.
 
 ## What it does
+
+- **Investigates public GitHub accounts:** accepts usernames, `@handles`, or public profile URLs and lists returned public repositories for users and organizations.
+- **Answers account follow-ups:** supports evidence-backed natural-language questions about public repository metadata, language/activity summaries, and sampled recent commits. Greetings and acknowledgements are handled as conversation instead of being misrouted into research.
+- **Assesses developer evidence for a role:** connects a target role to relevant public repositories, observed technology signals, activity dates, evidence gaps, and interview questions. It is a screening aid—not a hiring verdict.
+- **Compares two GitHub accounts:** uses explicit role-relevance, technology, activity, and shared-signal criteria, keeping each account’s evidence and citations separate.
+- **Investigates repository health:** inspects a bounded sample of commits and open issues, the README excerpt, repository metadata, and the latest-release endpoint to identify maintenance signals and source-linked next steps.
+- **Recommends projects and contribution leads:** matches returned account repositories to a stated goal, highlights license cautions, and links to actual sampled issues where available.
+- **Preserves evidence and uncertainty:** distinguishes facts from hypotheses, never treats missing data as proof of missing skill, and does not call a quiet repository abandoned from activity alone.
+- **Stays read-only:** never executes repository code, automatically forks projects, creates branches, opens issues or pull requests, or writes to GitHub.
 
 - Accepts a public `https://github.com/owner/repository` URL and rejects unsupported hosts and malformed paths.
 - Accepts a GitHub username, `@handle`, or public profile URL and discovers public repositories for users and organizations, with client-side search and sorting before the user chooses a repository to investigate.
@@ -67,6 +76,8 @@ No account, GitHub token, database, or API key is required from visitors. Config
 
 ## Run and test
 
+A GitHub Actions workflow runs `npm run check` on pull requests targeting `main` and pushes to `main` or the developer-intelligence feature branch.
+
 Requires Node.js 20+; Node.js 22 LTS is recommended.
 
 ```bash
@@ -98,7 +109,7 @@ The app intentionally avoids claiming a project is “abandoned” from inactivi
 
 ## Project status
 
-This is an MVP vertical slice, not a finished maintainer platform. It does not install dependencies from third parties, clone repositories, run static analysis, infer maintainers' intent, write code back to GitHub, or keep a database of prior investigations. Partner observability integrations are intentionally deferred until core live inference and deployment have been verified.
+RepoGhost remains an early-stage, read-only product. The new assessment, comparison, and recommendation workflows use deterministic relevance signals from returned public metadata and bounded README samples; they do not prove engineering skill or project suitability. Repository-health and contribution plans describe observed signals, not maintainer intent. RepoGhost does not clone repositories, install dependencies, execute code, run project test suites, write to GitHub, or store a database of past investigations. The account/repository AI paths require a configured provider and still need live inference verification in addition to mocked tests.
 
 ## License
 
