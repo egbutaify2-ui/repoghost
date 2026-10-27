@@ -1,17 +1,12 @@
 'use strict';
 
 const form = document.querySelector('#investigate-form');
-const urlInput = document.querySelector('#repository-url');
+const usernameInput = document.querySelector('#github-username');
 const submitButton = document.querySelector('#investigate-button');
 const formError = document.querySelector('#form-error');
 const resultsSection = document.querySelector('#results');
 const resultsContent = document.querySelector('#results-content');
 const clearResultsButton = document.querySelector('#clear-results');
-const entryModeButtons = [...document.querySelectorAll('[data-entry-mode]')];
-const entryLabel = document.querySelector('label[for="repository-url"]');
-const entryHelp = document.querySelector('#url-help');
-const examplesRow = document.querySelector('#examples-row');
-let entryMode = 'repository';
 let lastDiscovery = null;
 
 function escapeHtml(value) {
@@ -136,7 +131,7 @@ function renderDiscoveredRepository(repository) {
       <p class="discovered-repo-description">${escapeHtml(repository.description || 'No public description provided.')}</p>
       <div class="discovered-repo-meta"><span>${escapeHtml(repository.language || 'Unknown language')}</span><span><span aria-hidden="true">★</span> ${Number(repository.stars || 0).toLocaleString()} stars</span><span>Pushed ${escapeHtml(relativeDate(repository.pushedAt))}</span></div>
     </div>
-    <button type="button" class="repo-investigate-button" data-investigate-url="${escapeHtml(repository.url)}">Investigate <span aria-hidden="true">↗</span></button>
+    <button type="button" class="repo-investigate-button" data-investigate-url="${escapeHtml(repository.url)}" aria-expanded="false">View evidence <span aria-hidden="true">↗</span></button>
   </article>`;
 }
 
@@ -308,12 +303,9 @@ function showRepositoryDiscovery(discovery) {
   sortSelect.addEventListener('change', updateRepositoryList);
   repositoryList.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest('[data-investigate-url]') : null;
-    if (!button) return;
+    if (!button || button.disabled) return;
     const repositoryUrl = button.getAttribute('data-investigate-url');
-    if (!repositoryUrl) return;
-    urlInput.value = repositoryUrl;
-    setEntryMode('repository');
-    investigate(repositoryUrl);
+    if (repositoryUrl) inspectRepositoryInline(repositoryUrl, button);
   });
   updateRepositoryList();
 
@@ -364,24 +356,6 @@ function clearFormError() {
   formError.hidden = true;
 }
 
-function setEntryMode(mode) {
-  entryMode = mode === 'account' ? 'account' : 'repository';
-  for (const button of entryModeButtons) {
-    button.setAttribute('aria-pressed', String(button.dataset.entryMode === entryMode));
-  }
-  const accountMode = entryMode === 'account';
-  urlInput.type = accountMode ? 'text' : 'url';
-  urlInput.autocomplete = accountMode ? 'off' : 'url';
-  urlInput.setAttribute('aria-label', accountMode ? 'GitHub username or organization' : 'Public GitHub repository URL');
-  entryLabel.textContent = accountMode ? 'GitHub username or organization' : 'Public GitHub repository URL';
-  urlInput.placeholder = accountMode ? 'e.g. octocat or expressjs' : 'https://github.com/owner/repository';
-  entryHelp.textContent = accountMode
-    ? 'Enter a GitHub username or organization. RepoGhost will find its public repositories.'
-    : 'Paste a public GitHub URL. No sign-in required.';
-  examplesRow.hidden = accountMode;
-  submitButton.querySelector('span:first-child').textContent = accountMode ? 'Find repositories' : 'Investigate repository';
-}
-
 function showDiscoveryLoading() {
   resultsSection.hidden = false;
   resultsSection.setAttribute('aria-busy', 'true');
@@ -392,7 +366,7 @@ async function discoverAccount(username) {
   clearFormError();
   submitButton.disabled = true;
   submitButton.querySelector('span:first-child').textContent = 'Searching…';
-  urlInput.setAttribute('aria-invalid', 'false');
+  usernameInput.setAttribute('aria-invalid', 'false');
   showDiscoveryLoading();
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
@@ -417,24 +391,35 @@ async function discoverAccount(username) {
   } finally {
     resultsSection.setAttribute('aria-busy', 'false');
     submitButton.disabled = false;
-    submitButton.querySelector('span:first-child').textContent = entryMode === 'account' ? 'Find repositories' : 'Investigate repository';
+    submitButton.querySelector('span:first-child').textContent = 'Search GitHub';
   }
 }
 
-function showLoading() {
-  resultsSection.hidden = false;
-  resultsSection.setAttribute('aria-busy', 'true');
-  resultsContent.innerHTML = `<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Following the commit trail…</strong><p>Reading public evidence, checking issue and release records, then asking the open-weight model to assess what the sources support.</p></div></div>`;
-}
+async function inspectRepositoryInline(repositoryUrl, button) {
+  const repositoryCard = button.closest('.discovered-repo');
+  if (!repositoryCard || !repositoryUrl) return;
+  const existing = repositoryCard.querySelector('.discovered-repo-detail');
+  if (existing) {
+    existing.hidden = !existing.hidden;
+    const expanded = !existing.hidden;
+    button.setAttribute('aria-expanded', String(expanded));
+    button.innerHTML = expanded
+      ? 'Hide evidence <span aria-hidden="true">−</span>'
+      : 'View evidence <span aria-hidden="true">↗</span>';
+    if (expanded) existing.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
 
-async function investigate(repositoryUrl) {
-  urlInput.value = repositoryUrl;
-  clearFormError();
-  submitButton.disabled = true;
-  submitButton.querySelector('span:first-child').textContent = 'Investigating…';
-  urlInput.setAttribute('aria-invalid', 'false');
-  showLoading();
-  resultsSection.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  const detail = document.createElement('section');
+  detail.className = 'discovered-repo-detail';
+  detail.setAttribute('aria-label', 'Repository evidence');
+  detail.setAttribute('aria-live', 'polite');
+  detail.innerHTML = '<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Loading repository evidence…</strong><p>Fetching public metadata, README, recent commits, open issues, and release records.</p></div></div>';
+  repositoryCard.append(detail);
+  button.disabled = true;
+  button.setAttribute('aria-expanded', 'true');
+  button.innerHTML = 'Loading… <span aria-hidden="true">◌</span>';
+
   try {
     const response = await fetch('/api/investigate', {
       method: 'POST',
@@ -446,64 +431,45 @@ async function investigate(repositoryUrl) {
     catch { throw new Error('The server returned a response RepoGhost could not read. Please try again.'); }
     if (!response.ok) {
       const error = payload.error || {};
-      throw new Error(error.message || `The investigation failed (HTTP ${response.status}).`);
+      throw new Error(error.message || 'Repository evidence could not be loaded (HTTP ' + response.status + ').');
     }
-    if (!payload.evidence || !payload.evidence.repository) throw new Error('The server did not return repository evidence. Please try again.');
+    if (!payload.evidence || !payload.evidence.repository) {
+      throw new Error('The server did not return repository evidence. Please try again.');
+    }
     const aiNotice = payload.analysis ? '' : renderAiUnavailable(payload.analysisStatus);
-    const ownerLogin = String(payload.evidence.repository.fullName || '').split('/')[0];
-    resultsContent.innerHTML = `${renderOverview(payload.evidence)}${aiNotice}${payload.analysis ? renderAnalysis(payload.evidence, payload.analysis) : renderEvidenceOnly(payload.evidence)}<p class="uncertainty-note">RepoGhost reports public signals. A quiet commit history does not prove abandonment, and inferred risks are not verified maintainer intent. Verify the linked sources before taking action.</p>${ownerLogin ? renderAccountChatPanel(ownerLogin) : ''}`;
-    if (ownerLogin) attachAccountChat({ login: ownerLogin });
+    detail.innerHTML = renderOverview(payload.evidence) +
+      aiNotice +
+      (payload.analysis ? renderAnalysis(payload.evidence, payload.analysis) : renderEvidenceOnly(payload.evidence)) +
+      '<p class="uncertainty-note">These are public repository signals, not a verdict about the people behind the project. Check the linked sources before acting.</p>';
+    detail.dataset.loaded = 'true';
   } catch (error) {
-    resultsContent.innerHTML = `<div class="error-card"><strong>Investigation interrupted</strong><p>${escapeHtml(error.message || 'Something went wrong. Please try again.')}</p></div>`;
+    detail.innerHTML = '<div class="error-card"><strong>Repository evidence interrupted</strong><p>' +
+      escapeHtml(error.message || 'Something went wrong. Please try again.') + '</p></div>';
   } finally {
-    resultsSection.setAttribute('aria-busy', 'false');
-    submitButton.disabled = false;
-    submitButton.querySelector('span:first-child').textContent = entryMode === 'account' ? 'Find repositories' : 'Investigate repository';
+    button.disabled = false;
+    button.innerHTML = 'Hide evidence <span aria-hidden="true">−</span>';
+    button.setAttribute('aria-expanded', 'true');
   }
 }
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   clearFormError();
-  const value = urlInput.value.trim();
-  if (entryMode === 'account') {
-    if (!value) {
-      urlInput.setAttribute('aria-invalid', 'true');
-      showFormError('Enter a GitHub username or organization, such as octocat or expressjs.');
-      urlInput.focus();
-      return;
-    }
-    discoverAccount(value);
+  const value = usernameInput.value.trim();
+  if (!value) {
+    usernameInput.setAttribute('aria-invalid', 'true');
+    showFormError('Enter a GitHub username or organization, such as octocat or expressjs.');
+    usernameInput.focus();
     return;
   }
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== 'github.com' || parsed.pathname.split('/').filter(Boolean).length !== 2) {
-      throw new Error('Use a public GitHub URL with exactly an owner and repository, for example https://github.com/owner/repository.');
-    }
-  } catch (error) {
-    urlInput.setAttribute('aria-invalid', 'true');
-    showFormError(error instanceof TypeError ? 'Enter a complete URL, such as https://github.com/owner/repository.' : error.message);
-    urlInput.focus();
-    return;
-  }
-  investigate(value);
+  discoverAccount(value);
 });
 
-entryModeButtons.forEach((button) => {
+document.querySelectorAll('[data-username]').forEach((button) => {
   button.addEventListener('click', () => {
-    setEntryMode(button.dataset.entryMode || 'repository');
+    usernameInput.value = button.getAttribute('data-username') || '';
     clearFormError();
-    urlInput.focus();
-  });
-});
-
-document.querySelectorAll('[data-repo]').forEach((button) => {
-  button.addEventListener('click', () => {
-    setEntryMode('repository');
-    urlInput.value = button.getAttribute('data-repo') || '';
-    clearFormError();
-    investigate(urlInput.value);
+    discoverAccount(usernameInput.value);
   });
 });
 
@@ -512,5 +478,5 @@ clearResultsButton.addEventListener('click', () => {
   lastDiscovery = null;
   resultsSection.hidden = true;
   resultsSection.setAttribute('aria-busy', 'false');
-  urlInput.focus();
+  usernameInput.focus();
 });
