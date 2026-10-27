@@ -13,6 +13,10 @@ const MAX_BODY_BYTES = 8 * 1024;
 const MAX_README_CHARS = 9_000;
 const MAX_ISSUE_BODY_CHARS = 1_000;
 const GITHUB_TIMEOUT_MS = 10_000;
+const GITHUB_RESPONSE_CACHE_TTL_MS = 30_000;
+const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 300;
+const githubResponseCaches = new WeakMap();
+
 const MODEL_TIMEOUT_MS = 45_000;
 const DEFAULT_MODEL = 'google/gemma-4-26b-a4b-it:free';
 
@@ -141,11 +145,45 @@ async function fetchResponse(fetchImpl, url, options = {}) {
 }
 
 function rateLimitMessage(response) {
-  if (response.status === 429 || response.headers.get('x-ratelimit-remaining') === '0') {
-    const reset = Number(response.headers.get('x-ratelimit-reset'));
-    const suffix = Number.isFinite(reset) && reset > 0 ? ` The limit is expected to reset around ${new Date(reset * 1000).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}.` : '';
-    throw new HttpError(429, 'GITHUB_RATE_LIMIT', `GitHub's unauthenticated API rate limit has been reached.${suffix} Please try again later.`);
+  const remaining = response.headers.get('x-ratelimit-remaining');
+  if (response.status !== 429 && remaining !== '0') return;
+  const reset = Number(response.headers.get('x-ratelimit-reset'));
+  const limit = Number(response.headers.get('x-ratelimit-limit'));
+  const suffix = Number.isFinite(reset) && reset > 0
+    ? ' The limit is expected to reset around ' + new Date(reset * 1000).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) + '.'
+    : '';
+  const limitLabel = Number.isFinite(limit) && limit > 0
+    ? limit.toLocaleString('en-US') + '-request/hour ' + (limit <= 60 ? 'unauthenticated' : 'authenticated') + ' REST API limit'
+    : 'REST API rate limit';
+  throw new HttpError(429, 'GITHUB_RATE_LIMIT', "GitHub's " + limitLabel + ' has been reached.' + suffix + ' Please wait until the reset time before trying again.');
+}
+
+async function fetchCachedGithubResponse(fetchImpl, url, options = {}) {
+  const headers = options.headers || githubHeaders();
+  let cache = githubResponseCaches.get(fetchImpl);
+  if (!cache) {
+    cache = new Map();
+    githubResponseCaches.set(fetchImpl, cache);
   }
+  const cacheKey = String(url) + '|' + (headers.Authorization ? 'authenticated' : 'anonymous') + '|' + (headers.Accept || '');
+  const now = Date.now();
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.response.clone();
+  }
+  if (cached) cache.delete(cacheKey);
+
+  const response = await fetchCachedGithubResponse(fetchImpl, url, { ...options, headers });
+  if (response.status === 200 && response.ok && !String(url).includes('/rate_limit')) {
+    cache.set(cacheKey, {
+      expiresAt: now + GITHUB_RESPONSE_CACHE_TTL_MS,
+      response: response.clone(),
+    });
+    while (cache.size > GITHUB_RESPONSE_CACHE_MAX_ENTRIES) {
+      cache.delete(cache.keys().next().value);
+    }
+  }
+  return response;
 }
 
 async function fetchGithubResponse(fetchImpl, url, options = {}) {
@@ -153,7 +191,7 @@ async function fetchGithubResponse(fetchImpl, url, options = {}) {
   const headers = { ...(options.headers || githubHeaders()) };
   if (authState && authState.disableAuth) delete headers.Authorization;
 
-  const response = await fetchResponse(fetchImpl, url, { ...options, headers });
+  const response = await fetchCachedGithubResponse(fetchImpl, url, { ...options, headers });
   // A fine-grained token without access to a repository can receive 404 even
   // when the repository is public. Fall back once, then keep this investigation
   // anonymous so every endpoint does not double-spend the shared public quota.
@@ -1276,7 +1314,7 @@ function createServer(dependencies = {}) {
     catch { return sendJson(res, 400, { error: { code: 'INVALID_URL', message: 'Invalid request URL.' }, requestId }, requestId); }
 
     if (req.method === 'GET' && pathname === '/api/health') {
-      return sendJson(res, 200, { status: 'ok', service: 'RepoGhost', aiConfigured: Boolean(process.env.OPENROUTER_API_KEY), model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL }, requestId);
+      return sendJson(res, 200, { status: 'ok', service: 'RepoGhost', aiConfigured: Boolean(process.env.OPENROUTER_API_KEY), githubTokenConfigured: Boolean(typeof process.env.GITHUB_TOKEN === 'string' && process.env.GITHUB_TOKEN.trim()), model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL }, requestId);
     }
 
     if (req.method === 'POST' && pathname === '/api/discover') {
