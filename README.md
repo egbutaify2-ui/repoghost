@@ -16,6 +16,19 @@
 - Clearly reports when inference is not configured or unavailable while preserving repository evidence. There is no silent closed-model fallback and no fabricated AI report.
 - Uses bounded requests, timeouts, basic request-size limits, useful GitHub/API errors, and a responsive dark interface.
 
+## Developer intelligence suite
+
+The developer-intelligence workbench adds four read-only workflows to the existing account and repository investigation UI:
+
+- **Developer assessment** accepts a public account and target role, then identifies relevant repository metadata and inspected README signals, demonstrated technology indicators, recent push dates, evidence gaps, and role-specific interview questions. It is a screening aid, not a hiring decision.
+- **Account comparison** compares two distinct public accounts against an explicit goal. It shows the relevant repository match counts, technologies observed in the selected sample, latest recorded push dates, shared signals, and the evidence limits for each side. It does not produce a universal developer score.
+- **Repository health and revival plan** examines repository metadata, a bounded sample of recent commits and open issues, the available README excerpt, and the latest-release endpoint. It highlights observable maintenance signals and gives three source-linked next steps. An old push date is not treated as proof of abandonment.
+- **Repository recommendations** matches an account's returned public repositories to a stated use case, surfaces relevant metadata and license cautions, and links to real sampled open issues when available. Recommendations are keyword-relevance signals, not guarantees that a project is suitable.
+
+The JSON endpoints are `POST /api/intelligence/assess`, `POST /api/intelligence/compare`, `POST /api/intelligence/health`, and `POST /api/intelligence/recommend`. All use the existing request-size validation, public GitHub evidence collector, repository evidence cache, request IDs, and consistent error envelopes. Core results are deterministic and remain available without AI inference; they do not invent facts or rely on a model to count repositories. Detail collection is bounded and sequential to reduce GitHub API pressure.
+
+The new frontend is available from the **Developer Intelligence** panel and has responsive forms, evidence links, loading and failure states, scope warnings, and role-specific output. It can prefill account inputs after the existing username search. All workflows are read-only: RepoGhost does not fork a project, open issues, create branches or pull requests, or modify source repositories.
+
 ## Stack
 
 - Node.js 22+ using native HTTP, `fetch`, and the Node test runner. No third-party runtime dependencies are required.
@@ -27,7 +40,7 @@ The MVP uses plain JavaScript deliberately: the connected development environmen
 
 ## Open-weight model and open innovation
 
-Default model: [`google/gemma-4-26b-a4b-it:free`](https://openrouter.ai/google/gemma-4-26b-a4b-it%3Afree), Google DeepMind Gemma 4 26B A4B IT, listed by OpenRouter as open-weight and Apache-2.0 licensed. The `:free` variant is currently listed at zero token price; OpenRouter's free tier is rate limited (currently 50 free-model requests/day without purchased credits, with provider availability and limits subject to change). A free endpoint is not a service-level guarantee.
+The default model setting uses OpenRouter's `openrouter/free` router, which selects from currently available free compatible models. `OPENROUTER_MODEL` can override that setting, and the account and repository analysis paths have bounded fallback behavior for model-routing failures. Free-model availability and provider limits can change; a free endpoint is not a service-level guarantee.
 
 Why open innovation matters to RepoGhost:
 
@@ -62,7 +75,7 @@ npm test
 npm run check
 ```
 
-`npm test` uses Node's built-in test runner and mocked upstream responses. It covers URL and GitHub account validation, public-repository evidence retrieval and account discovery, account Q&A evidence collection and citation validation, open-weight model request/error handling, user and organization repository lists, missing README/release/issue data, GitHub 404 and rate-limit handling, prompt-injection boundaries, HTTP routes, and secure response headers.
+`npm test` uses Node's built-in test runner and mocked upstream responses. It covers URL and GitHub account validation, public-repository evidence retrieval and account discovery, account Q&A evidence collection and citation validation, open-weight model request/error handling, user and organization repository lists, missing README/release/issue data, GitHub 404 and rate-limit handling, prompt-injection boundaries, HTTP routes and secure response headers, plus role-relevant developer assessment, two-account source separation, read-only repository health planning, goal-based recommendations, and all four intelligence API endpoints.
 
 These tests are deterministic mocks. They do **not** establish that the GitHub API or OpenRouter inference succeeded against live services. A live validation should be completed after the app is deployed and `OPENROUTER_API_KEY` is configured. `/api/health` checks that the server is responding; `aiConfigured` reports only whether the server has a key, not whether a live inference request will succeed.
 

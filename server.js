@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
 const { randomUUID } = require('node:crypto');
+const intelligence = require('./intelligence');
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -275,6 +276,7 @@ async function discoverRepositories(input, options = {}) {
         fork: repository.fork === true,
         defaultBranch: typeof repository.default_branch === 'string' ? repository.default_branch.slice(0, 100) : null,
         license: repository.license && typeof repository.license.name === 'string' ? repository.license.name.slice(0, 100) : null,
+        topics: Array.isArray(repository.topics) ? repository.topics.slice(0, 20).filter((topic) => typeof topic === 'string').map((topic) => topic.slice(0, 80)) : [],
       };
     });
 
@@ -1554,6 +1556,42 @@ function createServer(dependencies = {}) {
     }
     return evidence;
   };
+  const collectRoleAssessment = async (username, role, context = '', detailLimit = 3) => {
+    const normalizedUsername = parseGithubAccountName(username);
+    const discovery = await discover(normalizedUsername, { fetchImpl });
+    const ranked = intelligence.rankRepositories(discovery.repositories, role, context)
+      .filter((item) => item.score > 0)
+      .slice(0, detailLimit);
+    const detailedEvidence = [];
+    const warnings = [];
+    // Keep this sequential and bounded: each repository investigation makes several GitHub requests.
+    for (const item of ranked) {
+      try {
+        detailedEvidence.push(await getCachedRepositoryEvidence(item.repository.url));
+      } catch (error) {
+        warnings.push({
+          repository: item.repository.fullName,
+          code: error && typeof error.code === 'string' ? error.code : 'EVIDENCE_UNAVAILABLE',
+          message: 'Detailed repository evidence could not be collected for this candidate. Account metadata is still available.',
+        });
+      }
+    }
+    const assessment = intelligence.buildDeveloperAssessment(discovery, role, context, detailedEvidence);
+    assessment.collectionWarnings = warnings;
+    if (discovery.limitReached) {
+      assessment.limitations.push('GitHub returned a capped repository list; this assessment does not cover repositories outside the returned sample.');
+    }
+    return { discovery, assessment };
+  };
+  const requiredText = (value, name, maxLength) => {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new HttpError(400, 'INVALID_INTELLIGENCE_INPUT', 'Enter ' + name + '.');
+    }
+    if (value.trim().length > maxLength) {
+      throw new HttpError(400, 'INVALID_INTELLIGENCE_INPUT', name.charAt(0).toUpperCase() + name.slice(1) + ' must be ' + maxLength + ' characters or fewer.');
+    }
+    return value.trim();
+  };
   return http.createServer(async (req, res) => {
     const requestId = randomUUID();
     let pathname;
@@ -1658,6 +1696,81 @@ function createServer(dependencies = {}) {
         return sendJson(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message || 'The account question failed. Please try again.' }, requestId }, requestId);
       }
     }
+    if (req.method === 'POST' && pathname.startsWith('/api/intelligence/')) {
+      let body;
+      try { body = await readJsonBody(req); }
+      catch (error) {
+        const status = error instanceof HttpError ? error.status : 400;
+        return sendJson(res, status, { error: { code: error.code || 'INVALID_REQUEST', message: error.message }, requestId }, requestId);
+      }
+      try {
+        if (pathname === '/api/intelligence/assess') {
+          const username = parseGithubAccountName(body.username ?? body.account);
+          const role = requiredText(body.role, 'a target role or use case', 120);
+          const context = typeof body.context === 'string' && body.context.trim() ? requiredText(body.context, 'evaluation context', 500) : '';
+          const result = await collectRoleAssessment(username, role, context, 3);
+          return sendJson(res, 200, { assessment: result.assessment, requestId }, requestId);
+        }
+        if (pathname === '/api/intelligence/compare') {
+          const usernameA = parseGithubAccountName(body.usernameA ?? body.leftUsername);
+          const usernameB = parseGithubAccountName(body.usernameB ?? body.rightUsername);
+          if (usernameA.toLowerCase() === usernameB.toLowerCase()) {
+            throw new HttpError(400, 'SAME_ACCOUNT_COMPARISON', 'Enter two different GitHub accounts to compare.');
+          }
+          const goal = requiredText(body.goal, 'a comparison role or objective', 160);
+          const left = await collectRoleAssessment(usernameA, goal, '', 2);
+          const right = await collectRoleAssessment(usernameB, goal, '', 2);
+          const comparison = intelligence.buildDeveloperComparison(left.assessment, right.assessment, goal);
+          comparison.collectionWarnings = [
+            ...left.assessment.collectionWarnings.map((warning) => ({ side: 'left', ...warning })),
+            ...right.assessment.collectionWarnings.map((warning) => ({ side: 'right', ...warning })),
+          ];
+          return sendJson(res, 200, { comparison, requestId }, requestId);
+        }
+        if (pathname === '/api/intelligence/health') {
+          const repositoryUrl = requiredText(body.repositoryUrl, 'a public GitHub repository URL', 2048);
+          const evidence = await getCachedRepositoryEvidence(repositoryUrl);
+          return sendJson(res, 200, { health: intelligence.buildRepositoryHealth(evidence), requestId }, requestId);
+        }
+        if (pathname === '/api/intelligence/recommend') {
+          const username = parseGithubAccountName(body.username ?? body.account);
+          const goal = requiredText(body.goal, 'a goal or use case', 240);
+          const discovery = await discover(username, { fetchImpl });
+          const ranked = intelligence.rankRepositories(discovery.repositories, goal)
+            .filter((item) => item.score > 0)
+            .slice(0, 3);
+          const detailedEvidence = [];
+          const warnings = [];
+          // A recommendation should inspect a few real projects for README and contribution leads.
+          for (const item of ranked.slice(0, 2)) {
+            try {
+              detailedEvidence.push(await getCachedRepositoryEvidence(item.repository.url));
+            } catch (error) {
+              warnings.push({
+                repository: item.repository.fullName,
+                code: error && typeof error.code === 'string' ? error.code : 'EVIDENCE_UNAVAILABLE',
+                message: 'Detailed issue and README evidence could not be collected for this candidate.',
+              });
+            }
+          }
+          const recommendations = intelligence.buildRepositoryRecommendations(discovery, goal, detailedEvidence);
+          recommendations.collectionWarnings = warnings;
+          if (discovery.limitReached) recommendations.limitations.push('The account returned a capped repository list; candidates outside this list were not considered.');
+          return sendJson(res, 200, { recommendations, requestId }, requestId);
+        }
+        throw new HttpError(404, 'INTELLIGENCE_ROUTE_NOT_FOUND', 'That intelligence endpoint was not found.');
+      } catch (error) {
+        const status = error instanceof HttpError ? error.status : 500;
+        if (status >= 500) logger.error?.('[RepoGhost ' + requestId + '] intelligence route failed: ' + (error.code || error.name || 'ERROR'));
+        return sendJson(res, status, {
+          error: {
+            code: error.code || 'INTELLIGENCE_FAILED',
+            message: error.message || 'RepoGhost could not complete this intelligence request. Please try again.',
+          },
+          requestId,
+        }, requestId);
+      }
+    }
     if (req.method === 'POST' && pathname === '/api/evidence') {
       let body;
       try { body = await readJsonBody(req); }
@@ -1720,6 +1833,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  ...intelligence,
   DEFAULT_MODEL,
   rateLimitMessage,
   githubHeaders,
