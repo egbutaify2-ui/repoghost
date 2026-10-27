@@ -114,8 +114,19 @@ function rateLimitMessage(response) {
   }
 }
 
+async function fetchGithubResponse(fetchImpl, url, options = {}) {
+  const headers = options.headers || githubHeaders();
+  const response = await fetchResponse(fetchImpl, url, { ...options, headers });
+  // A fine-grained token without access to this repository can receive 404 even
+  // when the repository is public. Retry once anonymously before declaring it missing.
+  if (response.status !== 404 || !headers.Authorization) return response;
+  const publicHeaders = { ...headers };
+  delete publicHeaders.Authorization;
+  return fetchResponse(fetchImpl, url, { ...options, headers: publicHeaders });
+}
+
 async function fetchJson(fetchImpl, url, options = {}) {
-  const response = await fetchResponse(fetchImpl, url, options);
+  const response = await fetchGithubResponse(fetchImpl, url, options);
   rateLimitMessage(response);
   if (!response.ok) {
     if (response.status === 404) {
@@ -136,7 +147,7 @@ async function fetchJson(fetchImpl, url, options = {}) {
 
 async function fetchReadme(fetchImpl, apiBase, fullName) {
   const url = `${apiBase}/repos/${fullName}/readme`;
-  const response = await fetchResponse(fetchImpl, url, { headers: githubHeaders() });
+  const response = await fetchGithubResponse(fetchImpl, url, { headers: githubHeaders() });
   rateLimitMessage(response);
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -626,6 +637,7 @@ module.exports = {
   SYSTEM_PROMPT,
   analyzeEvidence,
   buildAnalysisSchema,
+  fetchGithubResponse,
   compactEvidenceForModel,
   createServer,
   getRepositoryEvidence,
