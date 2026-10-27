@@ -510,7 +510,7 @@ test('serves the landing page with secure headers', async (t) => {
   const response = await fetch(`http://127.0.0.1:${address.port}/`);
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-security-policy'), /default-src 'self'/);
-  assert.match(await response.text(), /Explore public profiles/);
+  assert.match(await response.text(), /Investigate public profiles/);
 });
 
 
