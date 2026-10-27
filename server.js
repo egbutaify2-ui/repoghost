@@ -307,12 +307,19 @@ function buildAccountQuestionSummary(discovery) {
     defaultBranch: repository.defaultBranch || null,
   }));
   const sourceByRepo = new Map(repositoryRows.map((repository) => [repository.fullName, repository.sourceId]));
+  const publicRepositoryCount = Number.isFinite(discovery.account.publicRepos)
+    ? Math.max(0, Number(discovery.account.publicRepos))
+    : repositories.length;
+  const totalStarsAcrossReturnedRepositories = repositoryRows.reduce((total, repository) => total + repository.stars, 0);
+  const starsTotalIsComplete = repositories.length === publicRepositoryCount;
   return {
     account: discovery.account,
     stats: {
-      publicRepositoriesReportedByGitHub: Number(discovery.account.publicRepos || 0),
+      publicRepositoriesReportedByGitHub: publicRepositoryCount,
       repositoriesReturnedForThisInvestigation: repositories.length,
-      resultsTruncatedAtApiLimit: discovery.limitReached === true,
+      resultsTruncatedAtApiLimit: discovery.limitReached === true && !starsTotalIsComplete,
+      totalStarsAcrossReturnedRepositories,
+      starsTotalIsComplete,
       languageCountsInReturnedRepositories: languages,
       archivedRepositoriesInReturnedList: repositories.filter((repository) => repository.archived).length,
       forksInReturnedRepositories: repositories.filter((repository) => repository.fork).length,
@@ -407,6 +414,82 @@ async function collectAccountQuestionEvidence(discovery, options = {}) {
   return evidence;
 }
 
+
+async function collectAccountContributorEvidence(evidence, discovery, options = {}) {
+  if (evidence.contributorSummary) return evidence;
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const apiBase = (options.githubApiBaseUrl || 'https://api.github.com').replace(/\/$/, '');
+  const candidates = [...(discovery.repositories || [])]
+    .filter((repository) => repository && repository.pushedAt && !repository.archived && !repository.fork)
+    .sort((left, right) => (Date.parse(right.pushedAt || '') || 0) - (Date.parse(left.pushedAt || '') || 0)
+      || Number(right.stars || 0) - Number(left.stars || 0))
+    .slice(0, MAX_ACCOUNT_ACTIVITY_REPOSITORIES);
+  const authState = { disableAuth: false };
+  const uniqueContributors = new Map();
+  const repositoryResults = [];
+
+  for (const repository of candidates) {
+    const repositoryIndex = (discovery.repositories || []).findIndex((item) => item.fullName === repository.fullName);
+    const sourceId = 'account-contributors-' + (repositoryIndex + 1);
+    try {
+      const payload = await fetchJson(fetchImpl,
+        apiBase + '/repos/' + repository.fullName + '/contributors?per_page=100',
+        { headers: githubHeaders(), authState, optional: true });
+      if (!Array.isArray(payload)) continue;
+      const logins = [];
+      for (const contributor of payload) {
+        const login = contributor && typeof contributor.login === 'string' && contributor.login.trim()
+          ? contributor.login.trim()
+          : contributor && typeof contributor.html_url === 'string' && contributor.html_url.includes('github.com/')
+            ? contributor.html_url.split('github.com/')[1].split(/[/?#]/)[0]
+            : null;
+        if (!login) continue;
+        logins.push(login);
+        const key = login.toLowerCase();
+        if (!uniqueContributors.has(key)) uniqueContributors.set(key, login);
+      }
+      const truncated = payload.length >= 100;
+      repositoryResults.push({
+        sourceId,
+        fullName: repository.fullName,
+        returnedContributorCount: logins.length,
+        contributorCountIsExact: !truncated,
+        atLeastCount: truncated ? logins.length : null,
+        truncated,
+      });
+      if (!evidence.sources.some((source) => source.id === sourceId)) {
+        evidence.sources.push({
+          id: sourceId,
+          type: 'contributors',
+          title: 'Contributors · ' + repository.fullName,
+          url: repository.url + '/graphs/contributors',
+        });
+      }
+    } catch (error) {
+      if (error instanceof HttpError && error.code === 'GITHUB_RATE_LIMIT') {
+        evidence.limitations.push('Contributor data could not be fully sampled because GitHub rate-limited contributor requests.');
+        break;
+      }
+      evidence.limitations.push('Contributor data was unavailable for ' + repository.fullName + '.');
+    }
+  }
+
+  evidence.contributorSummary = {
+    scope: 'Up to ' + MAX_ACCOUNT_ACTIVITY_REPOSITORIES + ' most recently pushed eligible public repositories, not every repository in the account.',
+    repositories: repositoryResults,
+    distinctAccountsFoundInSample: uniqueContributors.size,
+    contributorLogins: [...uniqueContributors.values()].slice(0, 300),
+    repositoryCountSampled: repositoryResults.length,
+    completeForSampledRepositories: repositoryResults.length === candidates.length &&
+      repositoryResults.every((repository) => repository.contributorCountIsExact),
+    isAccountWideTotal: false,
+  };
+  if (!repositoryResults.length) {
+    evidence.limitations.push('No contributor lists were available for the sampled repositories; an account-wide contributor count cannot be determined from this snapshot.');
+  }
+  return evidence;
+}
+
 function buildAccountAnswerSchema(evidence) {
   const sourceIds = [...new Set((evidence.sources || [])
     .map((source) => source.id)
@@ -469,6 +552,81 @@ const ACCOUNT_QUESTION_SYSTEM_PROMPT = 'You are RepoGhost Account Intelligence, 
   '- If repository data is truncated at an API limit, describe counts and language breakdowns as referring to the returned sample.\n' +
   '- Prefer concise, useful answers. Make uncertainty clear and use the relevant evidence sources.\n' +
   'Return only one JSON object matching the requested schema.';
+
+
+function answerAccountMetricQuestion(evidence, question) {
+  const asksStars = /\\b(stars?|stargazers?)\\b/i.test(question);
+  const asksContributors = /\\bcontributors?\\b/i.test(question);
+  const asksRepoCount = /\\b(how many|number of|count of|total)\\b.{0,35}\\b(repos?|repositories)\\b/i.test(question);
+  if (!asksStars && !asksContributors && !asksRepoCount) return null;
+
+  const repositoryRows = Array.isArray(evidence.repositories) ? evidence.repositories : [];
+  const availableSources = new Map((evidence.sources || []).map((source) => [source.id, source]));
+  const citations = new Map();
+  const uncertainty = [];
+  const parts = [];
+  const addCitation = (id) => {
+    if (availableSources.has(id)) citations.set(id, availableSources.get(id));
+  };
+  addCitation('account-profile');
+
+  if (asksRepoCount) {
+    const reported = Number(evidence.stats && evidence.stats.publicRepositoriesReportedByGitHub);
+    const returned = Number(evidence.stats && evidence.stats.repositoriesReturnedForThisInvestigation) || repositoryRows.length;
+    if (Number.isFinite(reported)) {
+      parts.push('GitHub reports ' + reported + ' public repositories for @' + evidence.account.login + '.');
+      if (returned < reported) {
+        uncertainty.push('The repository list returned for this investigation contains ' + returned + ' repositories, so repository-level aggregates below cover only that returned list.');
+      }
+    } else {
+      parts.push('The current evidence contains ' + returned + ' public repositories.');
+    }
+  }
+
+  if (asksStars) {
+    const stars = Number(evidence.stats && evidence.stats.totalStarsAcrossReturnedRepositories);
+    const returned = Number(evidence.stats && evidence.stats.repositoriesReturnedForThisInvestigation) || repositoryRows.length;
+    const reported = Number(evidence.stats && evidence.stats.publicRepositoriesReportedByGitHub) || returned;
+    const complete = evidence.stats && evidence.stats.starsTotalIsComplete === true;
+    if (Number.isFinite(stars)) {
+      parts.push('The ' + (complete ? 'public repositories in the current account snapshot' : 'returned public repositories') +
+        ' have a combined ' + stars.toLocaleString('en-US') + ' stars across ' + returned + ' repositories' +
+        (complete ? '.' : ' (GitHub reports ' + reported + ' public repositories, so this is a partial total).'));
+      const top = [...repositoryRows].sort((a, b) => Number(b.stars || 0) - Number(a.stars || 0)).slice(0, 5);
+      for (const repository of top) addCitation(repository.sourceId);
+      if (!complete) uncertainty.push('The combined star count covers only repositories returned in this investigation; it is not a complete account-wide total.');
+    } else {
+      parts.push('The current evidence does not contain a computable combined star total.');
+      uncertainty.push('Repository metadata with star counts was unavailable.');
+    }
+  }
+
+  if (asksContributors) {
+    const summary = evidence.contributorSummary;
+    if (summary && summary.repositoryCountSampled > 0) {
+      parts.push('Across the ' + summary.repositoryCountSampled + ' most recently pushed eligible repositories sampled, GitHub returned ' +
+        summary.distinctAccountsFoundInSample + ' distinct contributor accounts after deduplicating usernames.');
+      parts.push('This is a sample, not the total number of unique contributors across @' + evidence.account.login + ' and all its public repositories.');
+      for (const repository of summary.repositories || []) addCitation(repository.sourceId);
+      if (!summary.completeForSampledRepositories) {
+        uncertainty.push('At least one contributor list may be capped at 100 entries or was unavailable, so the distinct count can be an undercount even within the sampled repositories.');
+      }
+      uncertainty.push('GitHub does not provide this app with a precomputed account-wide unique contributor total; people who contribute to multiple repositories need to be deduplicated across all repositories to calculate one.');
+    } else {
+      parts.push('An evidence-backed contributor total is not available in this snapshot. Contributor lists were not available for the sampled repositories, so RepoGhost cannot safely estimate the count.');
+      uncertainty.push('The account-wide unique contributor total is unknown from the collected public evidence.');
+    }
+  }
+
+  if (!citations.size) return null;
+  return {
+    answer: parts.join(' '),
+    citations: [...citations.values()],
+    uncertainty,
+    status: { code: 'AI_READY', message: 'Answered directly from collected public GitHub evidence.' },
+    model: null,
+  };
+}
 
 async function answerAccountQuestion(evidence, question, options = {}) {
   const env = options.env || process.env;
