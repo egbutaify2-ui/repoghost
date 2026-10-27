@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const {
   DEFAULT_MODEL,
   githubHeaders,
+  rateLimitMessage,
   HttpError,
   SYSTEM_PROMPT,
   analyzeEvidence,
@@ -366,6 +367,35 @@ test('preserves evidence when model inference is rate-limited', async () => {
   assert.equal(evidence.repository.fullName, 'acme/engine');
 });
 
+test('caches successful public GitHub GET responses for repeat lookups', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return responseJson({ ok: true, value: 7 });
+  };
+  const first = await require('../server').fetchGithubResponse(fetchImpl, 'https://api.github.test/repos/acme/engine', {
+    headers: githubHeaders(undefined, {}),
+  });
+  const second = await require('../server').fetchGithubResponse(fetchImpl, 'https://api.github.test/repos/acme/engine', {
+    headers: githubHeaders(undefined, {}),
+  });
+  assert.deepEqual(await first.json(), { ok: true, value: 7 });
+  assert.deepEqual(await second.json(), { ok: true, value: 7 });
+  assert.equal(calls, 1);
+});
+
+test('reports actual GitHub REST rate limit tier from response headers', () => {
+  assert.throws(() => rateLimitMessage(responseJson({}, 403, {
+    'x-ratelimit-remaining': '0',
+    'x-ratelimit-limit': '60',
+    'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 60),
+  })), (error) => error.code === 'GITHUB_RATE_LIMIT' && /60-request\/hour unauthenticated REST API limit/.test(error.message));
+  assert.throws(() => rateLimitMessage(responseJson({}, 403, {
+    'x-ratelimit-remaining': '0',
+    'x-ratelimit-limit': '5000',
+  })), (error) => error.code === 'GITHUB_RATE_LIMIT' && /5,000-request\/hour authenticated REST API limit/.test(error.message));
+});
+
 test('serves health check and rejects unsupported repository URLs on the HTTP endpoint', async (t) => {
   const server = createServer({ logger: { error() {} } });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -374,7 +404,9 @@ test('serves health check and rejects unsupported repository URLs on the HTTP en
   const root = `http://127.0.0.1:${address.port}`;
   const health = await fetch(`${root}/api/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).status, 'ok');
+  const healthBody = await health.json();
+  assert.equal(healthBody.status, 'ok');
+  assert.equal(typeof healthBody.githubTokenConfigured, 'boolean');
   const invalid = await fetch(`${root}/api/investigate`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repositoryUrl: 'https://gitlab.com/acme/engine' }),
   });
