@@ -966,6 +966,9 @@ test('serves username-only GitHub search with repository evidence and account ch
   assert.match(page, /id="intel-health-form"/);
   assert.match(page, /id="intel-recommend-form"/);
   assert.match(page, /DEVELOPER INTELLIGENCE/);
+  assert.ok(page.includes('Built by <strong>Egbuta Ifeanyi Chukwu</strong>'));
+  assert.ok(page.includes('href="https://dev.to/egbutaify2ui"'));
+  assert.ok(page.includes('href="https://github.com/egbutaify2-ui"'));
   assert.match(page, /data-username="expressjs"/);
   assert.match(page, /data-username="nodejs"/);
   assert.doesNotMatch(page, /id="repository-url"/);
