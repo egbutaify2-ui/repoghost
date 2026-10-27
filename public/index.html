@@ -4,8 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0d12">
-  <meta name="description" content="RepoGhost investigates the evidence left behind in neglected public GitHub repositories. Open-weight AI, source-linked findings, and practical revival steps.">
-  <title>RepoGhost — The past leaves a trace</title>
+  <meta name="description" content="Investigate public GitHub developers and repositories. Assess role-relevant project evidence, compare accounts, inspect project health, and discover useful projects with source-linked findings.">
+  <title>RepoGhost — GitHub Developer &amp; Repository Intelligence</title>
+  <meta property="og:title" content="RepoGhost — GitHub Developer &amp; Repository Intelligence">
+  <meta property="og:description" content="Assess public developer portfolios, compare GitHub accounts, investigate repository health, and find relevant projects. Evidence first. Read-only by design.">
+  <meta name="twitter:card" content="summary">
   <link rel="icon" href="/ghost.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
@@ -17,7 +20,7 @@
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 40 40" fill="none"><path d="M8 31.5V18.8C8 11.9 13.3 6.5 20 6.5s12 5.4 12 12.3v12.7l-5.1-3.4-3.5 3.4-3.4-3.4-3.5 3.4L12.9 28 8 31.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="15.5" cy="18.5" r="1.4" fill="currentColor"/><circle cx="24.5" cy="18.5" r="1.4" fill="currentColor"/><path d="M16.5 23.5c2.1 1.8 4.9 1.8 7 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </span>
-        <span class="brand-copy"><strong>RepoGhost</strong><small>PROJECT ARCHAEOLOGY</small></span>
+        <span class="brand-copy"><strong>RepoGhost</strong><small>DEVELOPER + REPOSITORY INTELLIGENCE</small></span>
       </a>
       <div class="topbar-right">
         <span class="quiet-status"><span class="status-dot"></span> READ-ONLY INVESTIGATION</span>
@@ -29,8 +32,8 @@
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
           <div class="eyebrow"><span class="eyebrow-line"></span> FIELD NOTES / 001 <span class="eyebrow-muted">· THE GHOST IN THE MACHINE</span></div>
-          <h1 id="hero-title">Every repository<br>leaves <span class="headline-accent">traces.</span></h1>
-          <p class="hero-description">Find the story buried in a neglected codebase. RepoGhost connects commit trails, unresolved issues, releases, and documentation to evidence-backed next steps.</p>
+          <h1 id="hero-title">Investigate people.<br>Understand <span class="headline-accent">projects.</span></h1>
+          <p class="hero-description">RepoGhost turns public GitHub activity into useful, source-linked insight. Assess a developer against a role, compare two accounts, investigate repository health, or find a project worth exploring next—without pretending public metadata tells the whole story.</p>
           <div class="proof-row">
             <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Source-linked findings</span>
             <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Facts ≠ hypotheses</span>
@@ -49,8 +52,8 @@
             <path d="M26 119h20M181 87h29M177 190h34M20 203h19" stroke="#7892ad" stroke-opacity=".6" stroke-linecap="round"/>
             <defs><linearGradient id="ghostFill" x1="66" y1="34" x2="179" y2="242" gradientUnits="userSpaceOnUse"><stop stop-color="#17212d"/><stop offset="1" stop-color="#0d1119"/></linearGradient></defs>
           </svg>
-          <div class="art-caption"><span class="art-caption-dot"></span> NO SIGNAL IS A STORY BY ITSELF.</div>
-          <div class="art-coordinate">40°43' N<br>CODEBASE / UNKNOWN</div>
+          <div class="art-caption"><span class="art-caption-dot"></span> EVIDENCE BEFORE CONCLUSIONS.</div>
+          <div class="art-coordinate">40°43' N<br>GITHUB / PUBLIC SIGNALS</div>
         </div>
       </section>
 
@@ -66,7 +69,7 @@
             <input id="github-username" name="username" type="text" placeholder="Enter a GitHub username or org, e.g. expressjs" autocomplete="off" spellcheck="false" required aria-describedby="url-help" maxlength="2048">
             <button id="investigate-button" type="submit"><span>Search GitHub</span><span class="button-arrow" aria-hidden="true">↗</span></button>
           </div>
-          <div class="input-meta"><p id="url-help">Search a public GitHub username or organization. We’ll list repositories, then you can open evidence and ask questions.</p><p class="keyboard-hint">READ-ONLY <span>·</span> PUBLIC REPOS <span>·</span> CITATIONS FIRST</p></div>
+          <div class="input-meta"><p id="url-help">Search a public GitHub username or organization to browse repositories and ask evidence-backed questions. Then use the tools below to assess a role, compare accounts, investigate project health, or find a relevant project.</p><p class="keyboard-hint">READ-ONLY <span>·</span> PUBLIC REPOS <span>·</span> CITATIONS FIRST</p></div>
           <p id="form-error" class="form-error" role="alert" hidden></p>
         </form>
         <div class="examples-row" id="examples-row">
@@ -74,7 +77,7 @@
           <button type="button" class="example-repo" data-username="expressjs">@expressjs <span>↗</span></button>
           <button type="button" class="example-repo" data-username="nodejs">@nodejs <span>↗</span></button>
           <button type="button" class="example-repo" data-username="octocat">@octocat <span>↗</span></button>
-          <span class="examples-note">Search an account first; inspect each repository only when needed.</span>
+          <span class="examples-note">Start with an account, then assess, compare, revive, or discover.</span>
         </div>
       </section>
 
@@ -142,23 +145,23 @@
 
       <section id="results" class="results-section" aria-live="polite" aria-busy="false" hidden>
         <div class="results-header">
-          <div><span class="section-index">02 / CASE FILE</span><h2>Account and repository results</h2></div>
+          <div><span class="section-index">03 / CASE FILE</span><h2>Account and repository results</h2></div>
           <button type="button" id="clear-results" class="reset-button">Clear case <span aria-hidden="true">↺</span></button>
         </div>
         <div id="results-content"></div>
       </section>
 
       <section id="method" class="method-section">
-        <div class="method-heading"><span class="section-index">03 / METHOD</span><h2>Not a séance.<br><span>A chain of evidence.</span></h2></div>
+        <div class="method-heading"><span class="section-index">04 / HOW IT WORKS</span><h2>Useful decisions.<br><span>Traceable evidence.</span></h2></div>
         <div class="method-grid">
-          <article class="method-card"><span class="method-number">A</span><h3>Collect the traces</h3><p>Public repository metadata, README, recent commits, open issues, and release records. Missing records are reported as missing.</p><span class="method-tag">GITHUB REST API</span></article>
-          <article class="method-card"><span class="method-number">B</span><h3>Question the evidence</h3><p>An open-weight model reviews bounded repository text as untrusted data. Embedded instructions are never treated as commands.</p><span class="method-tag">OPEN-WEIGHT AI</span></article>
-          <article class="method-card"><span class="method-number">C</span><h3>Leave a trail</h3><p>Findings link back to original sources. Observations and hypotheses stay separate, so the next maintainer can verify every lead.</p><span class="method-tag">CITATIONS FIRST</span></article>
+          <article class="method-card"><span class="method-number">A</span><h3>Collect public signals</h3><p>RepoGhost reads public profile and repository metadata, plus bounded samples of README text, commits, issues, and releases when available. Missing or sampled data is called out.</p><span class="method-tag">GITHUB REST API</span></article>
+          <article class="method-card"><span class="method-number">B</span><h3>Match the question</h3><p>Role assessments, account comparisons, project-health reports, and repository recommendations use explicit criteria. AI-powered analysis is kept separate, and repository text is treated as untrusted data.</p><span class="method-tag">ROLE + PROJECT CONTEXT</span></article>
+          <article class="method-card"><span class="method-number">C</span><h3>Help you choose the next move</h3><p>Findings link back to public GitHub sources and distinguish observations from recommendations. RepoGhost never pushes code, opens issues, forks projects, or executes repository code.</p><span class="method-tag">READ-ONLY BY DESIGN</span></article>
         </div>
       </section>
 
       <section class="principle-bar">
-        <div class="principle-icon" aria-hidden="true">✳</div><p><strong>Open innovation matters here.</strong> The model is replaceable, inspectable, and can be self-hosted as the project evolves. The investigative rules and evidence map remain under your control.</p><span class="principle-stamp">KEEP THE PAST<br>USEFUL, NOT MYSTICAL.</span>
+        <div class="principle-icon" aria-hidden="true">✳</div><p><strong>Built for better technical decisions.</strong> RepoGhost helps developers, maintainers, contributors, and hiring teams explore public project evidence. It supports investigation—not certainty—and leaves every GitHub change in your hands.</p><span class="principle-stamp">KEEP THE PAST<br>USEFUL, NOT MYSTICAL.</span>
       </section>
     </main>
     <footer class="footer"><a class="footer-brand" href="/">RepoGhost</a><span>Evidence over intuition. Every time.</span><span class="footer-right">BUILT FOR THE ONES WHO PICK UP THE THREAD.</span></footer>

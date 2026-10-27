@@ -302,7 +302,7 @@ test('builds an OpenRouter-compatible request and validates mocked model output'
     env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
   });
   assert.equal(authHeader, 'Bearer test-secret');
-  assert.equal(requestHeaders['X-Title'], 'RepoGhost - Evidence-backed project archaeology');
+  assert.equal(requestHeaders['X-Title'], 'RepoGhost - Developer and Repository Intelligence');
   assert.ok(Object.values(requestHeaders).every((value) => [...value].every((character) => character.codePointAt(0) <= 0x7f)), 'HTTP header values must be ASCII-safe');
   assert.equal(requestBody.model, DEFAULT_MODEL);
   assert.equal(requestBody.response_format.type, 'json_schema');
@@ -510,7 +510,7 @@ test('serves the landing page with secure headers', async (t) => {
   const response = await fetch(`http://127.0.0.1:${address.port}/`);
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-security-policy'), /default-src 'self'/);
-  assert.match(await response.text(), /Every repository/);
+  assert.match(await response.text(), /Investigate people/);
 });
 
 
@@ -682,7 +682,7 @@ test('answers account questions through the configured open-weight model with a 
     },
   });
   assert.equal(requestHeaders.Authorization, 'Bearer test-secret');
-  assert.equal(requestHeaders['X-Title'], 'RepoGhost - Evidence-backed account intelligence');
+  assert.equal(requestHeaders['X-Title'], 'RepoGhost - Developer and Repository Intelligence');
   assert.equal(requestBody.response_format.type, 'json_schema');
   assert.equal(requestBody.response_format.json_schema.schema.properties.sourceIds.items.enum.includes('repo-1'), true);
   assert.equal(result.answer, 'The returned repository is written in TypeScript.');
@@ -958,6 +958,14 @@ test('serves username-only GitHub search with repository evidence and account ch
   assert.equal(homeResponse.status, 200);
   const page = await homeResponse.text();
   assert.match(page, /id="github-username"/);
+  assert.match(page, /GitHub Developer &amp; Repository Intelligence/);
+  assert.match(page, /DEVELOPER \+ REPOSITORY INTELLIGENCE/);
+  assert.match(page, /id="intelligence-suite"/);
+  assert.match(page, /id="intel-assess-form"/);
+  assert.match(page, /id="intel-compare-form"/);
+  assert.match(page, /id="intel-health-form"/);
+  assert.match(page, /id="intel-recommend-form"/);
+  assert.match(page, /DEVELOPER INTELLIGENCE/);
   assert.match(page, /data-username="expressjs"/);
   assert.match(page, /data-username="nodejs"/);
   assert.doesNotMatch(page, /id="repository-url"/);
