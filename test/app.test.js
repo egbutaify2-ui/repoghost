@@ -13,6 +13,7 @@ const {
   buildAccountQuestionSummary,
   buildAnalysisSchema,
   collectAccountQuestionEvidence,
+  collectAccountContributorEvidence,
   createServer,
   discoverRepositories,
   getRepositoryEvidence,
@@ -441,6 +442,8 @@ test('builds account evidence summaries with bounded repository statistics and s
   const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
   assert.equal(evidence.account.login, 'acme');
   assert.equal(evidence.stats.repositoriesReturnedForThisInvestigation, 1);
+  assert.equal(evidence.stats.totalStarsAcrossReturnedRepositories, 48);
+  assert.equal(evidence.stats.starsTotalIsComplete, true);
   assert.deepEqual(evidence.stats.languageCountsInReturnedRepositories, { TypeScript: 1 });
   assert.equal(evidence.repositories[0].sourceId, 'repo-1');
   assert.equal(evidence.sources[0].id, 'account-profile');
@@ -467,6 +470,43 @@ test('collects a small recent-commit sample and attaches a real source link', as
   assert.ok(evidence.sources.some((source) => source.id === evidence.recentCommits[0].sourceId &&
     source.url === 'https://github.com/acme/engine/commit/abcdef1234567890'));
   assert.deepEqual(requests, ['/repos/acme/engine/commits']);
+});
+
+test('collects bounded contributor samples and deduplicates GitHub accounts', async () => {
+  const discovery = accountDiscoveryFixture();
+  const evidence = buildAccountQuestionSummary(discovery);
+  const requests = [];
+  const enriched = await collectAccountContributorEvidence(evidence, discovery, {
+    githubApiBaseUrl: 'https://api.github.test',
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+      requests.push(url.pathname);
+      if (url.pathname === '/repos/acme/engine/contributors') return responseJson([
+        { login: 'dev-one', html_url: 'https://github.com/dev-one' },
+        { login: 'dev-two', html_url: 'https://github.com/dev-two' },
+      ]);
+      throw new Error('Unexpected request: ' + url.href);
+    },
+  });
+  assert.deepEqual(requests, ['/repos/acme/engine/contributors']);
+  assert.equal(enriched.contributorSummary.distinctAccountsFoundInSample, 2);
+  assert.equal(enriched.contributorSummary.isAccountWideTotal, false);
+  assert.equal(enriched.contributorSummary.repositories[0].contributorCountIsExact, true);
+  assert.ok(enriched.sources.some((source) => source.id === 'account-contributors-1' &&
+    source.url === 'https://github.com/acme/engine/graphs/contributors'));
+});
+
+test('answers star-count questions deterministically without calling the AI provider', async () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  let called = false;
+  const result = await answerAccountQuestion(evidence, 'How many stars does this account have?', {
+    env: {},
+    fetchImpl: async () => { called = true; throw new Error('should not call provider'); },
+  });
+  assert.equal(called, false);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.match(result.answer, /48 stars/);
+  assert.ok(result.citations.some((source) => source.url === 'https://github.com/acme/engine'));
 });
 
 test('requires account answers to cite a valid account evidence source', () => {
@@ -541,7 +581,7 @@ test('retries account Q&A once in JSON mode when a free model returns prose', as
   assert.equal(result.citations[0].url, 'https://github.com/acme/engine');
 });
 
-test('does not invent an account answer when both structured and JSON-mode replies are invalid', async () => {
+test('does not invent an account answer when structured, JSON-mode, and text replies have no valid citations', async () => {
   const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
   let calls = 0;
   const result = await answerAccountQuestion(evidence, 'Can I hire this person?', {
@@ -552,9 +592,36 @@ test('does not invent an account answer when both structured and JSON-mode repli
       return responseJson({ choices: [{ message: { content: 'I am unable to provide a structured answer.' } }] });
     },
   });
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   assert.equal(result.answer, null);
   assert.equal(result.status.code, 'AI_INVALID_OUTPUT');
+});
+
+test('falls back to cited plain text when both JSON response modes fail', async () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  const requestBodies = [];
+  let call = 0;
+  const result = await answerAccountQuestion(evidence, 'What does this project do?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: 'openrouter/free' },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async (_input, options) => {
+      requestBodies.push(JSON.parse(options.body));
+      call += 1;
+      if (call < 3) {
+        return responseJson({ choices: [{ message: { content: 'The project appears to be a TypeScript parsing engine.' } }] });
+      }
+      return responseJson({ model: 'free-text-model', choices: [{ message: { content:
+        'The repository is described as a TypeScript parsing engine. Public metadata alone does not prove its quality or intended use beyond that description.\nSources: repo-1' } }] });
+    },
+  });
+  assert.equal(call, 3);
+  assert.equal(requestBodies[0].response_format.type, 'json_schema');
+  assert.equal(requestBodies[1].response_format.type, 'json_object');
+  assert.equal(requestBodies[2].response_format, undefined);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.model, 'free-text-model');
+  assert.match(result.answer, /TypeScript parsing engine/);
+  assert.equal(result.citations[0].url, 'https://github.com/acme/engine');
 });
 
 test('does not fabricate account answers when AI is not configured', async () => {
