@@ -178,7 +178,7 @@ function attachAccountChat(account) {
         ? '<div class="account-chat-uncertainty"><strong>Limits to this answer</strong><ul>' +
           uncertainty.map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></div>'
         : '';
-      article.innerHTML = '<div class="account-chat-role">REPOGHOST / EVIDENCE ANSWER</div><p class="account-chat-text">' +
+      article.innerHTML = '<div class="account-chat-role">REPOGHOST</div><p class="account-chat-text">' +
         escapeHtml(content).replace(/\n/g, '<br>') + '</p>' + citationMarkup + uncertaintyMarkup;
     }
     if (chatMessages.querySelector('.account-chat-empty')) chatMessages.innerHTML = '';
@@ -221,7 +221,8 @@ function attachAccountChat(account) {
       }
       pending.classList.remove('pending');
       if (payload.answer) {
-        pending.innerHTML = '<div class="account-chat-role">REPOGHOST / EVIDENCE ANSWER</div><p class="account-chat-text">' +
+        const replyLabel = payload.status?.code === 'CONVERSATION' ? 'REPOGHOST / CHAT' : 'REPOGHOST / EVIDENCE ANSWER';
+        pending.innerHTML = '<div class="account-chat-role">' + replyLabel + '</div><p class="account-chat-text">' +
           escapeHtml(payload.answer).replace(/\n/g, '<br>') + '</p>' +
           ((payload.citations || []).length
             ? '<div class="account-chat-citations"><span class="account-chat-role">SOURCES</span>' +
