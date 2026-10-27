@@ -83,7 +83,7 @@ function githubHeaders(accept = 'application/vnd.github+json', env = process.env
     'User-Agent': 'RepoGhost/0.1 (evidence-backed repository archaeology)',
   };
   const token = typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '';
-  if (token) headers.Authorization = 'token ' + token;
+  if (token) headers.Authorization = 'Bearer ' + token;
   return headers;
 }
 
@@ -115,11 +115,16 @@ function rateLimitMessage(response) {
 }
 
 async function fetchGithubResponse(fetchImpl, url, options = {}) {
-  const headers = options.headers || githubHeaders();
+  const authState = options.authState;
+  const headers = { ...(options.headers || githubHeaders()) };
+  if (authState && authState.disableAuth) delete headers.Authorization;
+
   const response = await fetchResponse(fetchImpl, url, { ...options, headers });
-  // A fine-grained token without access to this repository can receive 404 even
-  // when the repository is public. Retry once anonymously before declaring it missing.
+  // A fine-grained token without access to a repository can receive 404 even
+  // when the repository is public. Fall back once, then keep this investigation
+  // anonymous so every endpoint does not double-spend the shared public quota.
   if (response.status !== 404 || !headers.Authorization) return response;
+  if (authState) authState.disableAuth = true;
   const publicHeaders = { ...headers };
   delete publicHeaders.Authorization;
   return fetchResponse(fetchImpl, url, { ...options, headers: publicHeaders });
@@ -145,9 +150,9 @@ async function fetchJson(fetchImpl, url, options = {}) {
   }
 }
 
-async function fetchReadme(fetchImpl, apiBase, fullName) {
+async function fetchReadme(fetchImpl, apiBase, fullName, options = {}) {
   const url = `${apiBase}/repos/${fullName}/readme`;
-  const response = await fetchGithubResponse(fetchImpl, url, { headers: githubHeaders() });
+  const response = await fetchGithubResponse(fetchImpl, url, { headers: githubHeaders(), authState: options.authState });
   rateLimitMessage(response);
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -208,15 +213,16 @@ async function getRepositoryEvidence(rawUrl, options = {}) {
   const apiBase = (options.githubApiBaseUrl || 'https://api.github.com').replace(/\/$/, '');
   const base = `${apiBase}/repos/${repository.fullName}`;
 
-  const meta = await fetchJson(fetchImpl, base, { headers: githubHeaders() });
+  const authState = { disableAuth: false };
+  const meta = await fetchJson(fetchImpl, base, { headers: githubHeaders(), authState });
   if (meta.private === true) {
     throw new HttpError(404, 'REPOSITORY_NOT_FOUND', 'RepoGhost only investigates public repositories.');
   }
   const requests = await Promise.all([
-    fetchReadme(fetchImpl, apiBase, repository.fullName),
-    fetchJson(fetchImpl, `${base}/commits?per_page=8`, { headers: githubHeaders() }),
-    fetchJson(fetchImpl, `${base}/issues?state=open&per_page=15&sort=created&direction=desc`, { headers: githubHeaders() }),
-    fetchJson(fetchImpl, `${base}/releases/latest`, { headers: githubHeaders(), optional: true }),
+    fetchReadme(fetchImpl, apiBase, repository.fullName, { authState }),
+    fetchJson(fetchImpl, `${base}/commits?per_page=8`, { headers: githubHeaders(), authState }),
+    fetchJson(fetchImpl, `${base}/issues?state=open&per_page=15&sort=created&direction=desc`, { headers: githubHeaders(), authState }),
+    fetchJson(fetchImpl, `${base}/releases/latest`, { headers: githubHeaders(), optional: true, authState }),
   ]);
   const [readme, commitsPayload, issuesPayload, releasePayload] = requests;
   if (!Array.isArray(commitsPayload) || !Array.isArray(issuesPayload)) {
