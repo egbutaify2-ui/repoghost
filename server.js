@@ -1559,13 +1559,17 @@ function createServer(dependencies = {}) {
   const collectRoleAssessment = async (username, role, context = '', detailLimit = 3) => {
     const normalizedUsername = parseGithubAccountName(username);
     const discovery = await discover(normalizedUsername, { fetchImpl });
-    const ranked = intelligence.rankRepositories(discovery.repositories, role, context)
-      .filter((item) => item.score > 0)
-      .slice(0, detailLimit);
+    const ranked = intelligence.rankRepositories(discovery.repositories, role, context);
+    const rankedMatches = ranked.filter((item) => item.score > 0).slice(0, detailLimit);
+    const selectedNames = new Set(rankedMatches.map((item) => String(item.repository.fullName || '').toLowerCase()));
+    const fallbackCandidates = ranked.filter((item) =>
+      item.repository && item.repository.archived !== true && item.repository.fork !== true &&
+      !selectedNames.has(String(item.repository.fullName || '').toLowerCase()));
+    const selectedCandidates = [...rankedMatches, ...fallbackCandidates.slice(0, Math.max(0, detailLimit - rankedMatches.length))];
     const detailedEvidence = [];
     const warnings = [];
     // Keep this sequential and bounded: each repository investigation makes several GitHub requests.
-    for (const item of ranked) {
+    for (const item of selectedCandidates) {
       try {
         detailedEvidence.push(await getCachedRepositoryEvidence(item.repository.url));
       } catch (error) {

@@ -943,6 +943,9 @@ test('serves username-only GitHub search with repository evidence and account ch
   const scriptResponse = await fetch(root + '/app.js');
   assert.equal(scriptResponse.status, 200);
   const frontend = await scriptResponse.text();
+  assert.match(frontend, /languagesInReturnedSnapshot/);
+  assert.match(frontend, /Recent public repositories/);
+  assert.match(frontend, /No exact role-specific match was found/);
   assert.match(frontend, /function renderAccountChatPanel\(accountLogin\)/);
   assert.match(frontend, /function inspectRepositoryInline\(repositoryUrl, button\)/);
   assert.match(frontend, /renderAccountChatPanel\(account\.login\)/);
@@ -1130,6 +1133,95 @@ test('comparison keeps both accounts and their citations distinct and uses expli
   assert.ok(comparison.left.sources.every((source) => !source.url.includes('github.com/beta/')));
   assert.ok(comparison.right.sources.every((source) => !source.url.includes('github.com/alpha/')));
   assert.match(comparison.summary, /public evidence|repository matches|metadata/i);
+});
+
+test('React assessment uses inspected README evidence and keeps account-wide technology signals', () => {
+  const discovery = intelligenceDiscovery('alpha', [{
+    name: 'web-client',
+    fullName: 'alpha/web-client',
+    url: 'https://github.com/alpha/web-client',
+    description: 'A small web application',
+    language: 'TypeScript',
+    topics: [],
+    pushedAt: '2026-10-20T12:00:00Z',
+  }]);
+  const evidence = intelligenceRepositoryEvidence('alpha/web-client', {
+    readmeContent: '# Web client\\n\\nBuilt with React, Vite, and TypeScript.',
+  });
+  evidence.repository.description = 'A small web application';
+  evidence.repository.language = 'TypeScript';
+  evidence.repository.topics = [];
+
+  const assessment = buildDeveloperAssessment(discovery, 'react', '', [evidence]);
+  assert.equal(assessment.relevantProjects.length, 1);
+  assert.ok(assessment.relevantProjects[0].matchedTerms.includes('react'));
+  assert.ok(assessment.relevantProjects[0].reasons.some((reason) => /inspected public README/i.test(reason)));
+  assert.ok(assessment.languagesInReturnedSnapshot.includes('TypeScript'));
+  assert.ok(assessment.demonstratedTechnologies.some((item) => item.technology === 'TypeScript'));
+  assert.ok(assessment.demonstratedTechnologies.some((item) => item.technology === 'React'));
+});
+
+test('comparison keeps account-wide language and technology signals when no role matches exist', () => {
+  const leftDiscovery = intelligenceDiscovery('alpha', [{
+    name: 'api', fullName: 'alpha/api', url: 'https://github.com/alpha/api',
+    description: 'A service', language: 'JavaScript', pushedAt: '2026-10-19T00:00:00Z',
+  }]);
+  const rightDiscovery = intelligenceDiscovery('beta', [{
+    name: 'mobile', fullName: 'beta/mobile', url: 'https://github.com/beta/mobile',
+    description: 'A mobile app', language: 'TypeScript', pushedAt: '2026-10-18T00:00:00Z',
+  }]);
+  const left = buildDeveloperAssessment(leftDiscovery, 'quantum compiler', '', []);
+  const right = buildDeveloperAssessment(rightDiscovery, 'quantum compiler', '', []);
+  const comparison = buildDeveloperComparison(left, right, 'quantum compiler');
+
+  assert.equal(left.relevantProjects.length, 0);
+  assert.equal(right.relevantProjects.length, 0);
+  assert.ok(left.demonstratedTechnologies.some((item) => item.technology === 'JavaScript'));
+  assert.ok(right.demonstratedTechnologies.some((item) => item.technology === 'TypeScript'));
+  assert.match(comparison.criteria[1].leftValue, /JavaScript/);
+  assert.match(comparison.criteria[1].rightValue, /TypeScript/);
+});
+
+test('comparison inspects recent repository READMEs when metadata has no direct objective match', async (t) => {
+  const makeDiscovery = (input) => {
+    const login = String(input).replace(/^@/, '').replace(/^https:\/\/github\.com\//, '').split('/')[0];
+    return intelligenceDiscovery(login, [{
+      name: 'web-client',
+      fullName: login + '/web-client',
+      url: 'https://github.com/' + login + '/web-client',
+      description: 'A small web application',
+      language: 'TypeScript',
+      topics: [],
+      pushedAt: '2026-10-20T12:00:00Z',
+    }]);
+  };
+  const server = createServer({
+    logger: { error() {} },
+    discoverRepositories: async (username) => makeDiscovery(username),
+    getRepositoryEvidence: async (url) => {
+      const path = new URL(url).pathname.split('/').filter(Boolean);
+      const evidence = intelligenceRepositoryEvidence(path[0] + '/' + path[1], {
+        readmeContent: '# Web client\\n\\nBuilt with React and TypeScript.',
+      });
+      evidence.repository.description = 'A small web application';
+      evidence.repository.language = 'TypeScript';
+      evidence.repository.topics = [];
+      return evidence;
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/intelligence/compare', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ usernameA: 'alpha', usernameB: 'beta', goal: 'react' }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.comparison.left.relevantProjects.length, 1);
+  assert.equal(body.comparison.right.relevantProjects.length, 1);
+  assert.ok(body.comparison.left.relevantProjects[0].matchedTerms.includes('react'));
+  assert.ok(body.comparison.criteria[1].leftValue.includes('React'));
 });
 
 test('repository health report handles archived state, stale sampled issues, missing release, and read-only revival actions', () => {

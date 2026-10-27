@@ -9,6 +9,56 @@ const ROLE_PROFILES = [
   { match: /open.source|contribut|maintainer|community/i, terms: ['contributing', 'contribution', 'issue', 'pull request', 'release', 'test', 'documentation', 'cli', 'plugin', 'maintainer'] },
 ];
 
+const TECHNOLOGY_PROFILES = [
+  {
+    match: /\breact(?:\.js|js)?\b|\bjsx\b|\btsx\b/i,
+    terms: ['react', 'react.js', 'reactjs', 'react native', 'react-native', 'jsx', 'tsx', 'next.js', 'nextjs', 'remix', 'gatsby'],
+  },
+];
+
+const KNOWN_TECHNOLOGY_SIGNALS = [
+  { label: 'React Native', terms: ['react native', 'react-native'] },
+  { label: 'React', terms: ['react', 'react.js', 'reactjs'] },
+  { label: 'Next.js', terms: ['next.js', 'nextjs'] },
+  { label: 'Expo', terms: ['expo'] },
+  { label: 'Node.js', terms: ['node.js', 'nodejs'] },
+  { label: 'Express', terms: ['express'] },
+  { label: 'TypeScript', terms: ['typescript'] },
+  { label: 'JavaScript', terms: ['javascript'] },
+  { label: 'Python', terms: ['python'] },
+  { label: 'OpenRouter', terms: ['openrouter'] },
+  { label: 'OpenAI', terms: ['openai'] },
+  { label: 'LLM', terms: ['llm', 'large language model'] },
+  { label: 'PostgreSQL', terms: ['postgresql', 'postgres'] },
+  { label: 'Firebase', terms: ['firebase'] },
+  { label: 'Supabase', terms: ['supabase'] },
+  { label: 'Vite', terms: ['vite'] },
+  { label: 'GraphQL', terms: ['graphql'] },
+  { label: 'Docker', terms: ['docker'] },
+  { label: 'Vue.js', terms: ['vue.js', 'vue'] },
+  { label: 'Angular', terms: ['angular'] },
+  { label: 'Tailwind CSS', terms: ['tailwind css', 'tailwindcss'] },
+  { label: 'Svelte', terms: ['svelte'] },
+  { label: 'Remix', terms: ['remix'] },
+  { label: 'Gatsby', terms: ['gatsby'] },
+  { label: 'FastAPI', terms: ['fastapi'] },
+  { label: 'Django', terms: ['django'] },
+  { label: 'Flask', terms: ['flask'] },
+  { label: 'NestJS', terms: ['nestjs', 'nest.js'] },
+  { label: 'Prisma', terms: ['prisma'] },
+  { label: 'MongoDB', terms: ['mongodb'] },
+  { label: 'Redis', terms: ['redis'] },
+  { label: 'MySQL', terms: ['mysql'] },
+  { label: 'SQLite', terms: ['sqlite'] },
+];
+
+function containsTextTerm(value, term) {
+  const normalize = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const normalizedText = normalize(value);
+  const normalizedTerm = normalize(term);
+  return Boolean(normalizedText && normalizedTerm && (' ' + normalizedText + ' ').includes(' ' + normalizedTerm + ' '));
+}
+
 const STOP_WORDS = new Set([
   'the', 'and', 'for', 'with', 'from', 'that', 'this', 'into', 'about', 'work', 'role',
   'engineer', 'developer', 'senior', 'junior', 'mid', 'level', 'looking', 'best', 'which',
@@ -31,9 +81,11 @@ function words(value) {
 function inferRoleTerms(goal, context = '') {
   const combined = cleanText(goal, 160) + ' ' + cleanText(context, 500);
   const profile = ROLE_PROFILES.find((item) => item.match.test(combined));
+  const technologyProfile = TECHNOLOGY_PROFILES.find((item) => item.match.test(combined));
   const profileTerms = profile ? profile.terms : [];
+  const technologyTerms = technologyProfile ? technologyProfile.terms : [];
   const customTerms = words(combined).filter((word) => !STOP_WORDS.has(word));
-  return [...new Set([...profileTerms, ...customTerms])].slice(0, 30);
+  return [...new Set([...profileTerms, ...technologyTerms, ...customTerms])].slice(0, 30);
 }
 
 function repositorySearchText(repository) {
@@ -107,10 +159,30 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
   const account = discovery && discovery.account ? discovery.account : {};
   const role = cleanText(roleInput, 120) || 'Software Engineering';
   const context = cleanText(contextInput, 500);
-  const ranked = rankRepositories(discovery && discovery.repositories, role, context);
-  const selected = ranked.filter((item) => item.score > 0).slice(0, 4);
   const mapped = mapRepositoryEvidence(evidenceRows);
   const enrichedByName = new Map(mapped.rows.map((row) => [String(row.repository.fullName || '').toLowerCase(), row]));
+  const roleTerms = inferRoleTerms(role, context);
+  const ranked = rankRepositories(discovery && discovery.repositories, role, context)
+    .map((item) => {
+      const evidence = enrichedByName.get(String(item.repository && item.repository.fullName || '').toLowerCase());
+      const readmeText = evidence && evidence.readme && typeof evidence.readme.content === 'string'
+        ? evidence.readme.content
+        : '';
+      const readmeTerms = roleTerms.filter((term) => term.length > 2 && containsTextTerm(readmeText, term));
+      const matchedTerms = [...new Set([...(item.matchedTerms || []), ...readmeTerms])];
+      return {
+        ...item,
+        score: item.score + readmeTerms.length,
+        matchedTerms,
+        relevanceReasons: [
+          ...item.relevanceReasons,
+          ...readmeTerms.map((term) => 'The inspected public README mentions "' + term + '".'),
+        ],
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.pushedAt - left.pushedAt ||
+      String(left.repository && left.repository.fullName || '').localeCompare(String(right.repository && right.repository.fullName || '')));
+  const selected = ranked.filter((item) => item.score > 0).slice(0, 4);
   const sources = [{
     id: 'account-profile',
     type: 'profile',
@@ -138,26 +210,6 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
       readmeSource = evidence.sourceIds.readme || id;
     }
     const terms = [...new Set(item.matchedTerms)];
-    if (repository.language) {
-      const techKey = repository.language;
-      const previous = technologyMap.get(techKey) || { technology: techKey, repositoryCount: 0, sourceIds: [] };
-      previous.repositoryCount += 1;
-      previous.sourceIds.push(id);
-      technologyMap.set(techKey, previous);
-    }
-    const knownTech = ['react native', 'react', 'next.js', 'nextjs', 'expo', 'node.js', 'nodejs', 'express', 'typescript', 'javascript', 'python', 'openrouter', 'openai', 'llm', 'postgresql', 'firebase', 'supabase', 'vite', 'graphql', 'docker'];
-    const repoText = repositorySearchText(repository) + ' ' + readmeText;
-    for (const technology of knownTech) {
-      if (repoText.includes(technology)) {
-        const techKey = technology === 'nextjs' ? 'Next.js' : technology === 'nodejs' ? 'Node.js' : technology === 'react native' ? 'React Native' : technology.split(' ').map((word) => word.toUpperCase() === 'llm' ? 'LLM' : word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-        const previous = technologyMap.get(techKey) || { technology: techKey, repositoryCount: 0, sourceIds: [] };
-        if (!previous.sourceIds.includes(id)) {
-          previous.repositoryCount += 1;
-          previous.sourceIds.push(id);
-        }
-        technologyMap.set(techKey, previous);
-      }
-    }
     const documentationSignals = [];
     if (evidence && evidence.readme) {
       documentationSignals.push({ label: 'README inspected', detail: evidence.readme.truncated ? 'README sample is truncated.' : 'A public README was available.', sourceId: readmeSource || id });
@@ -184,6 +236,65 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
   }
 
   for (const source of mapped.sources) sources.push(source);
+
+  const repositorySourceByUrl = new Map(sources
+    .filter((source) => source.type === 'repository' && source.url)
+    .map((source) => [source.url, source.id]));
+  const sourceForSnapshotRepository = (repository, index) => {
+    const url = /^https:\/\/github\.com\//i.test(repository && repository.url || '')
+      ? repository.url
+      : 'https://github.com/' + String(repository && repository.fullName || '').split('/').map(encodeURIComponent).join('/');
+    if (repositorySourceByUrl.has(url)) return repositorySourceByUrl.get(url);
+    const id = 'snapshot-repository-' + (index + 1);
+    sources.push({
+      id,
+      type: 'repository',
+      title: cleanText(repository && (repository.fullName || repository.name) || 'Public repository', 180),
+      url,
+    });
+    repositorySourceByUrl.set(url, id);
+    return id;
+  };
+  const addTechnologySignal = (label, repository, sourceId) => {
+    if (!label || !repository) return;
+    const repoKey = String(repository.fullName || repository.name || sourceId).toLowerCase();
+    const previous = technologyMap.get(label) || {
+      technology: label,
+      repositoryCount: 0,
+      sourceIds: [],
+      _repositoryKeys: new Set(),
+    };
+    if (!previous._repositoryKeys.has(repoKey)) {
+      previous._repositoryKeys.add(repoKey);
+      previous.repositoryCount += 1;
+      if (previous.sourceIds.length < 4) previous.sourceIds.push(sourceId);
+    }
+    technologyMap.set(label, previous);
+  };
+
+  const returnedRepositories = Array.isArray(discovery && discovery.repositories) ? discovery.repositories : [];
+  returnedRepositories.forEach((repository, index) => {
+    const searchable = repositorySearchText(repository);
+    const matchingSignals = KNOWN_TECHNOLOGY_SIGNALS.filter((signal) =>
+      signal.terms.some((term) => containsTextTerm(searchable, term)));
+    if (!repository.language && !matchingSignals.length) return;
+    const sourceId = sourceForSnapshotRepository(repository, index);
+    if (repository.language) addTechnologySignal(repository.language, repository, sourceId);
+    for (const signal of matchingSignals) addTechnologySignal(signal.label, repository, sourceId);
+  });
+
+  // Technology evidence from README content is bounded to repositories that were actually inspected.
+  mapped.rows.forEach((evidence, index) => {
+    if (!evidence || !evidence.repository || !evidence.readme || typeof evidence.readme.content !== 'string') return;
+    const repoIndex = returnedRepositories.findIndex((repository) =>
+      String(repository.fullName || '').toLowerCase() === String(evidence.repository.fullName || '').toLowerCase());
+    const sourceId = sourceForSnapshotRepository(evidence.repository, repoIndex >= 0 ? repoIndex : index);
+    for (const signal of KNOWN_TECHNOLOGY_SIGNALS) {
+      if (signal.terms.some((term) => containsTextTerm(evidence.readme.content, term))) {
+        addTechnologySignal(signal.label, evidence.repository, sourceId);
+      }
+    }
+  });
   const languages = [...new Set((discovery && discovery.repositories || []).map((repository) => repository.language).filter(Boolean))];
   const activityCandidates = (discovery && discovery.repositories || [])
     .filter((repository) => repository.pushedAt)
@@ -264,7 +375,10 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
     context,
     summary,
     relevantProjects: projectRows,
-    demonstratedTechnologies: [...technologyMap.values()].map((item) => ({ ...item, sourceIds: [...new Set(item.sourceIds)] })).sort((left, right) => right.repositoryCount - left.repositoryCount || left.technology.localeCompare(right.technology)).slice(0, 14),
+    demonstratedTechnologies: [...technologyMap.values()]
+      .map(({ _repositoryKeys, ...item }) => ({ ...item, sourceIds: [...new Set(item.sourceIds)] }))
+      .sort((left, right) => right.repositoryCount - left.repositoryCount || left.technology.localeCompare(right.technology))
+      .slice(0, 14),
     languagesInReturnedSnapshot: languages,
     activity: {
       observationBasis: 'Current public repository metadata; up to five most recently pushed repositories from the returned list.',
@@ -287,6 +401,20 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
   };
 }
 
+function technologySourceIds(assessment) {
+  return [...new Set((assessment && Array.isArray(assessment.demonstratedTechnologies) ? assessment.demonstratedTechnologies : [])
+    .flatMap((item) => Array.isArray(item.sourceIds) ? item.sourceIds : []))];
+}
+
+function formatTechnologySignals(assessment) {
+  const signals = (assessment && Array.isArray(assessment.demonstratedTechnologies) ? assessment.demonstratedTechnologies : [])
+    .map((item) => item.technology)
+    .filter(Boolean);
+  if (!signals.length) return 'No recognizable technology signals in returned sample';
+  const visible = signals.slice(0, 8);
+  return visible.join(', ') + (signals.length > visible.length ? ' +' + (signals.length - visible.length) + ' more' : '');
+}
+
 function buildDeveloperComparison(left, right, goal) {
   const leftProjects = left && Array.isArray(left.relevantProjects) ? left.relevantProjects : [];
   const rightProjects = right && Array.isArray(right.relevantProjects) ? right.relevantProjects : [];
@@ -307,12 +435,12 @@ function buildDeveloperComparison(left, right, goal) {
       rightSourceIds: rightProjects.map((project) => project.sourceIds[0]),
     },
     {
-      label: 'Distinct relevant technologies observed',
-      leftValue: String(leftTerms.size),
-      rightValue: String(rightTerms.size),
-      interpretation: 'A broader keyword match can reflect repository descriptions or documentation and does not prove hands-on proficiency.',
-      leftSourceIds: leftProjects.map((project) => project.sourceIds[0]),
-      rightSourceIds: rightProjects.map((project) => project.sourceIds[0]),
+      label: 'Visible technology signals in public snapshot',
+      leftValue: formatTechnologySignals(left),
+      rightValue: formatTechnologySignals(right),
+      interpretation: 'Signals are collected from returned repository language fields and recognizable terms in metadata or inspected README samples. Mentions do not prove hands-on proficiency.',
+      leftSourceIds: technologySourceIds(left),
+      rightSourceIds: technologySourceIds(right),
     },
     {
       label: 'Latest recorded push in returned repositories',
