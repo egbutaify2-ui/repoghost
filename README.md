@@ -17,7 +17,7 @@
 
 - Node.js 22+ using native HTTP, `fetch`, and the Node test runner. No third-party runtime dependencies are required.
 - Static HTML/CSS/JavaScript frontend served by the same Node process.
-- GitHub REST API for repository evidence; no GitHub personal access token is needed for the basic public-repository path.
+- GitHub REST API for repository evidence. A token is optional for basic public lookups but strongly recommended on hosted runtimes where outbound IPs may be shared.
 - OpenRouter's OpenAI-compatible chat-completions API for inference.
 
 The MVP uses plain JavaScript deliberately: the connected development environment does not have package-registry network access, and a dependency-free implementation keeps the first vertical slice runnable and auditable without a build toolchain. The modules are small and can be migrated to TypeScript once the deployment/build pipeline is established.
@@ -43,10 +43,11 @@ Copy `.env.example` to `.env` for a local run, or configure the same values in t
 |---|---|---|
 | `OPENROUTER_API_KEY` | For AI analysis | Server-side key from [OpenRouter API Keys](https://openrouter.ai/keys). Leave unset to use the repository-evidence view without generating an AI answer. |
 | `OPENROUTER_MODEL` | No | Model ID. Default: `google/gemma-4-26b-a4b-it:free`. Do not silently replace it with a closed model. |
+| `GITHUB_TOKEN` | Recommended | Server-side token for authenticated public GitHub API requests and a higher request allowance. Never expose it in frontend code. |
 | `APP_URL` | No | Public URL sent as inference-provider attribution. Set this to the deployed domain. |
 | `PORT` | Usually set by host | HTTP listening port; defaults to `3000`. |
 
-No account, GitHub token, database, or API key is required from visitors. The owner must configure `OPENROUTER_API_KEY` on the server to enable actual model inference. When it is missing, the app tells users so and displays collected evidence only.
+No account, GitHub token, database, or API key is required from visitors. Configure `GITHUB_TOKEN` on the server for a more reliable GitHub API allowance, and `OPENROUTER_API_KEY` to enable model inference. Keep both as server-side secrets. When the OpenRouter key is missing, the app tells visitors and displays collected repository evidence only.
 
 ## Run and test
 
