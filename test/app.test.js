@@ -42,7 +42,7 @@ function responseJson(body, status = 200, headers = {}) {
 test('uses an optional server-side GitHub token for API calls', () => {
   const token = 'unit-test-token';
   const authenticated = githubHeaders(undefined, { GITHUB_TOKEN: token });
-  assert.equal(authenticated.Authorization, 'token ' + token);
+  assert.equal(authenticated.Authorization, 'Bearer ' + token);
   const publicOnly = githubHeaders(undefined, {});
   assert.equal(Object.hasOwn(publicOnly, 'Authorization'), false);
 });
@@ -130,6 +130,8 @@ test('retries public GitHub requests anonymously when a fine-grained token retur
     assert.equal(evidence.readme.path, 'README.md');
     assert.ok(attempts.some((attempt) => attempt.path === '/repos/acme/engine' && attempt.authenticated));
     assert.ok(attempts.some((attempt) => attempt.path === '/repos/acme/engine' && !attempt.authenticated));
+    assert.equal(attempts.filter((attempt) => attempt.authenticated).length, 1,
+      'once token access fails, remaining endpoint requests should stay anonymous rather than double-spending rate limit');
   } finally {
     if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
     else process.env.GITHUB_TOKEN = previousToken;
