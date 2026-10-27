@@ -4,6 +4,10 @@
 
 > RepoGhost is read-only. It does not clone repositories, execute repository code, open user-supplied links from repository text, or change the repository it investigates.
 
+## Creator
+
+Built by **Egbuta Ifeanyi Chukwu**. Follow my work on the [DEV profile](https://dev.to/egbutaify2ui) or explore my projects on the [GitHub profile](https://github.com/egbutaify2-ui).
+
 ## What it does
 
 - **Investigates public GitHub accounts:** accepts usernames, `@handles`, or public profile URLs and lists returned public repositories for users and organizations.
