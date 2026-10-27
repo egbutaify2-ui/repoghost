@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   DEFAULT_MODEL,
+  githubHeaders,
   HttpError,
   SYSTEM_PROMPT,
   analyzeEvidence,
@@ -36,6 +37,14 @@ const meta = {
 function responseJson(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 }
+
+test('uses an optional server-side GitHub token for API calls', () => {
+  const token = 'unit-test-token';
+  const authenticated = githubHeaders(undefined, { GITHUB_TOKEN: token });
+  assert.equal(authenticated.Authorization, 'token ' + token);
+  const publicOnly = githubHeaders(undefined, {});
+  assert.equal(Object.hasOwn(publicOnly, 'Authorization'), false);
+});
 
 function evidenceFetch(options = {}) {
   return async (input) => {
