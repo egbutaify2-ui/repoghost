@@ -601,10 +601,30 @@ function renderIntelComparison(comparison) {
   if (!comparison || comparison.kind !== 'developer-comparison') return renderIntelError('The server did not return an account comparison.');
   const left = comparison.left || {};
   const right = comparison.right || {};
-  const renderSide = (assessment) => '<div class="intel-compare-profile"><strong>@' + escapeHtml(assessment.account.login) + '</strong>' +
-    '<span>' + escapeHtml(assessment.role) + '</span><p>' + escapeHtml(assessment.summary) + '</p>' +
-    ((assessment.relevantProjects || []).slice(0, 2).map((project) => '<a href="' + escapeHtml(intelSafeUrl(project.url)) +
-      '" target="_blank" rel="noopener noreferrer">' + escapeHtml(project.fullName) + ' ↗</a>').join('')) + '</div>';
+  const renderSide = (assessment) => {
+    const account = assessment.account || {};
+    const languages = (assessment.languagesInReturnedSnapshot || []).slice(0, 8);
+    const recentRepositories = (assessment.activity && assessment.activity.recentRepositories || []).slice(0, 3);
+    const relevantProjects = (assessment.relevantProjects || []).slice(0, 2);
+    return '<div class="intel-compare-profile"><strong><a href="' + escapeHtml(intelSafeUrl(account.url)) +
+      '" target="_blank" rel="noopener noreferrer">@' + escapeHtml(account.login || 'unknown') + ' ↗</a></strong>' +
+      '<span>' + escapeHtml(assessment.role || '') + '</span><p>' + escapeHtml(assessment.summary || '') + '</p>' +
+      '<div class="intel-snapshot-stats"><span>Public repositories</span><strong>' +
+      escapeHtml(String(account.publicRepos ?? 'Unknown')) + ' reported · ' + escapeHtml(String(account.returnedCount ?? 0)) +
+      ' returned</strong></div><div class="intel-snapshot-languages"><span>Languages in returned snapshot</span><div class="intel-term-list">' +
+      (languages.length ? languages.map((language) => '<span>' + escapeHtml(language) + '</span>').join('') : '<span>None reported</span>') +
+      '</div></div><p class="intel-evidence-note">These are account-level snapshot signals, not proof of framework proficiency.</p>' +
+      '<h4 class="intel-snapshot-title">Recent public repositories</h4>' +
+      (recentRepositories.length ? '<ul class="intel-mini-list">' + recentRepositories.map((item) =>
+        '<li><a href="' + escapeHtml(intelSafeUrl(item.url)) + '" target="_blank" rel="noopener noreferrer">' +
+        escapeHtml(item.repository || 'Public repository') + ' ↗</a> — pushed ' + escapeHtml(formatDate(item.pushedAt)) + '</li>').join('') +
+        '</ul>' : renderIntelEmpty('No recent repository push dates were returned.')) +
+      '<h4 class="intel-snapshot-title">Role-specific repository matches</h4>' +
+      (relevantProjects.length ? relevantProjects.map((project) => '<a href="' + escapeHtml(intelSafeUrl(project.url)) +
+        '" target="_blank" rel="noopener noreferrer">' + escapeHtml(project.fullName) + ' ↗</a>').join('') :
+        renderIntelEmpty('No exact role-specific match was found. RepoGhost still shows the account snapshot and inspected public README signals above.')) +
+      '</div>';
+  };
   return '<div class="intel-result-heading"><div><span class="card-kicker">ACCOUNT COMPARISON</span><h3>' + escapeHtml(comparison.goal) + '</h3></div></div>' +
     '<section class="intel-summary"><strong>What the evidence suggests</strong><p>' + escapeHtml(comparison.summary) +
     '</p><p class="intel-evidence-note">This is a relevance comparison, not an overall ranking of developer quality.</p></section>' +
