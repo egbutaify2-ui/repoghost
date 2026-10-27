@@ -108,6 +108,34 @@ async function getEvidenceFixture() {
   });
 }
 
+test('retries public GitHub requests anonymously when a fine-grained token returns 404', async () => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = 'test-token-without-repository-access';
+  try {
+    const unauthenticatedFetch = evidenceFetch();
+    const attempts = [];
+    const fetchImpl = async (input, options = {}) => {
+      const url = new URL(String(input));
+      const authenticated = Boolean(options.headers && options.headers.Authorization);
+      attempts.push({ path: url.pathname, authenticated });
+      if (authenticated) return responseJson({ message: 'Not Found' }, 404);
+      return unauthenticatedFetch(input, options);
+    };
+
+    const evidence = await getRepositoryEvidence('https://github.com/acme/engine', {
+      fetchImpl,
+      githubApiBaseUrl: 'https://api.github.test',
+    });
+    assert.equal(evidence.repository.fullName, 'acme/engine');
+    assert.equal(evidence.readme.path, 'README.md');
+    assert.ok(attempts.some((attempt) => attempt.path === '/repos/acme/engine' && attempt.authenticated));
+    assert.ok(attempts.some((attempt) => attempt.path === '/repos/acme/engine' && !attempt.authenticated));
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+  }
+});
+
 test('accepts a standard GitHub repository URL', () => {
   assert.deepEqual(parseGithubRepoUrl('https://github.com/acme/engine'), {
     owner: 'acme', repo: 'engine', fullName: 'acme/engine', url: 'https://github.com/acme/engine',
