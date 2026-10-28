@@ -28,7 +28,7 @@ jobs:
 
           for attempt in $(seq 1 8); do
             health_code="$(curl --silent --show-error --max-time 20 -o /tmp/health.json -w '%{http_code}' "$base/api/health?verifyGithubAuth=1" || true)"
-            if [[ "$health_code" == "200" ]] && jq -e --arg expected "$expected" '.status == "ok" and .aiConfigured == true and .githubTokenConfigured == true and .githubAuthVerification.authenticated == true and .model == $expected' /tmp/health.json >/dev/null; then
+            if [[ "$health_code" == "200" ]] && jq -e --arg expected "$expected" '.status == "ok" and .aiConfigured == true and .githubTokenConfigured == true and .githubAuthVerification.authenticated == true and .githubAuthVerification.repositoryProbe.accessible == true and .model == $expected' /tmp/health.json >/dev/null; then
               echo "Health check confirms AI is configured, the GitHub token is accepted, and the pinned model is active."
               jq '{status, aiConfigured, githubTokenConfigured, githubAuthVerification, model}' /tmp/health.json
               break
