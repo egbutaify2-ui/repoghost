@@ -899,11 +899,12 @@ test('builds an evidence-only answer when every model provider fails', () => {
   const answer = buildAccountEvidenceFallback(evidence, 'What does this account do?', {
     code: 'AI_RATE_LIMIT',
   });
-  assert.match(answer.answer, /model voices have fallen silent/i);
+  assert.match(answer.answer, /archive cannot verify a direct answer/i);
   assert.match(answer.answer, /@acme/);
   assert.ok(answer.citations.length > 0);
   assert.equal(answer.status.code, 'EVIDENCE_FALLBACK');
-  assert.match(answer.uncertainty.join(' '), /unavailable/i);
+  assert.match(answer.uncertainty.join(' '), /source-checked direct answer was unavailable/i);
+  assert.doesNotMatch(answer.answer + ' ' + answer.uncertainty.join(' '), /AI_RATE_LIMIT|AI_INVALID_OUTPUT|inference path/i);
 });
 
 test('returns the provider reason when the pinned model returns 404', async () => {
