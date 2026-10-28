@@ -241,7 +241,11 @@ async function fetchGithubResponse(fetchImpl, url, options = {}) {
   // A fine-grained token without access to a repository can receive 404 even
   // when the repository is public. Fall back once, then keep this investigation
   // anonymous so every endpoint does not double-spend the shared public quota.
-  if (response.status !== 404 || !headers.Authorization) return response;
+  // Optional resources legitimately return 404 when absent (for example, a
+  // repository with no published releases). Do not retry those anonymously:
+  // the anonymous fallback can hit a separate, exhausted 60/hour quota and
+  // turn a harmless missing resource into a failed investigation.
+  if (response.status !== 404 || !headers.Authorization || options.optional === true) return response;
   if (authState) authState.disableAuth = true;
   const publicHeaders = { ...headers };
   delete publicHeaders.Authorization;
@@ -1069,7 +1073,7 @@ async function answerAccountQuestion(evidence, question, options = {}) {
 
 async function fetchReadme(fetchImpl, apiBase, fullName, options = {}) {
   const url = `${apiBase}/repos/${fullName}/readme`;
-  const response = await fetchGithubResponse(fetchImpl, url, { headers: githubHeaders(), authState: options.authState });
+  const response = await fetchGithubResponse(fetchImpl, url, { headers: githubHeaders(), authState: options.authState, optional: true });
   rateLimitMessage(response);
   if (response.status === 404) return null;
   if (!response.ok) {
