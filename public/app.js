@@ -138,9 +138,9 @@ function renderDiscoveredRepository(repository) {
 function renderAccountChatPanel(accountLogin) {
   return `<section class="account-chat" aria-label="Ask questions about this GitHub account">
     <div class="account-chat-heading">
-      <span class="card-kicker">ACCOUNT INTELLIGENCE / FOLLOW-UP</span>
-      <h3>Ask about @${escapeHtml(accountLogin)}</h3>
-      <p>Ask evidence-backed questions about public repositories, languages, and activity. For deeper workflows, use Developer Intelligence to assess a role, compare two accounts, investigate repository health, or discover projects to explore.</p>
+      <span class="card-kicker">GHOST INTERROGATION / FOLLOW-UP</span>
+      <h3>Question the ghost of @${escapeHtml(accountLogin)}</h3>
+      <p>Ask anything about this account’s public GitHub trail: projects, visible technologies, and recorded activity. Follow-up answers are grounded in available evidence, not private knowledge. For deeper investigations, compare accounts, question a repository’s health, or find your next contribution.</p>
     </div>
     <div id="account-chat-messages" class="account-chat-messages" aria-live="polite">
       <div class="account-chat-empty"><strong>What would you like to know?</strong><p>Try “Which project best matches a React Native role?” or “What public evidence supports this developer’s recent work?”</p></div>
@@ -397,7 +397,7 @@ async function discoverAccount(username) {
   } finally {
     resultsSection.setAttribute('aria-busy', 'false');
     submitButton.disabled = false;
-    submitButton.querySelector('span:first-child').textContent = 'Search GitHub';
+    submitButton.querySelector('span:first-child').textContent = 'Summon the ghost';
   }
 }
 
