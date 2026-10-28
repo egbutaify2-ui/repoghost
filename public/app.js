@@ -53,7 +53,7 @@ function renderOverview(evidence) {
   const activity = relativeDate(repo.pushedAt);
   const status = repo.archived ? '<span class="pill warn">Archived</span>' : '<span class="pill">Public repository</span>';
   const license = repo.license ? escapeHtml(repo.license) : 'Not detected';
-  return `<section class="repo-overview" aria-label="Repository overview">
+  return `<section class="repo-overview" aria-label="Repository case file">
     <div>
       <div class="repo-title-row"><a class="repo-title" href="${escapeHtml(repo.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(repo.fullName)} ↗</a>${status}${repo.disabled ? '<span class="pill warn">Disabled</span>' : ''}</div>
       <p class="repo-description">${escapeHtml(repo.description || 'No description survives in the public record.')}</p>
@@ -63,8 +63,8 @@ function renderOverview(evidence) {
     <div class="repo-stats">
       <div class="metric"><small>LANGUAGE</small><strong>${escapeHtml(repo.language || 'Unknown')}</strong></div>
       <div class="metric"><small>STARS</small><strong>${Number(repo.stars || 0).toLocaleString()}</strong></div>
-      <div class="metric"><small>LAST PUSH</small><strong>${escapeHtml(activity)}</strong></div>
-      <div class="metric"><small>OPEN ISSUES + PRS</small><strong>${Number(repo.openIssuesCount || 0).toLocaleString()}</strong></div>
+      <div class="metric"><small>LAST ECHO</small><strong>${escapeHtml(activity)}</strong></div>
+      <div class="metric"><small>OPEN WOUNDS / ISSUES + PRS</small><strong>${Number(repo.openIssuesCount || 0).toLocaleString()}</strong></div>
       <div class="metric"><small>CREATED</small><span>${escapeHtml(formatDate(repo.createdAt))}</span></div>
       <div class="metric"><small>LICENSE</small><span>${license}</span></div>
     </div>
@@ -74,7 +74,7 @@ function renderOverview(evidence) {
 function renderAiUnavailable(status) {
   const message = status?.message || 'The AI analysis could not be completed. No AI findings have been fabricated.';
   const isMissingKey = status?.code === 'AI_NOT_CONFIGURED';
-  return `<section class="analysis-unavailable" role="status"><span class="notice-mark" aria-hidden="true">${isMissingKey ? '◇' : '!'}</span><div><strong>${isMissingKey ? 'The trail is here · the machine is silent' : `Evidence loaded · ${escapeHtml(status?.code || 'AI unavailable')}`}</strong><p>${escapeHtml(message)}${isMissingKey ? ' Configure the key in your server environment; never put it in the browser.' : ''}</p></div></section>`;
+  return `<section class="analysis-unavailable" role="status"><span class="notice-mark" aria-hidden="true">${isMissingKey ? '◇' : '!'}</span><div><strong>${isMissingKey ? 'The trail is here · the machine is silent' : `The trail is here · ${escapeHtml(status?.code || 'AI unavailable')}`}</strong><p>${escapeHtml(message)}${isMissingKey ? ' Configure the key in your server environment; never put it in the browser.' : ''}</p></div></section>`;
 }
 
 function renderSignals(evidence, analysis) {
@@ -94,7 +94,7 @@ function renderRisks(evidence, analysis) {
 }
 
 function renderRecommendations(evidence, analysis) {
-  return `<ol class="recommendation-list">${analysis.recommendations.map((item, index) => `<li class="recommendation"><span class="recommendation-index">0${index + 1}</span><div><span class="recommendation-priority">${escapeHtml(item.priority)} / NEXT STEP</span><h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.action)}</p><p>${escapeHtml(item.why)}</p>${renderSources(evidence, item.sourceIds)}</div></li>`).join('')}</ol>`;
+  return `<ol class="recommendation-list">${analysis.recommendations.map((item, index) => `<li class="recommendation"><span class="recommendation-index">0${index + 1}</span><div><span class="recommendation-priority">${escapeHtml(item.priority)} / NEXT MOVE</span><h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.action)}</p><p>${escapeHtml(item.why)}</p>${renderSources(evidence, item.sourceIds)}</div></li>`).join('')}</ol>`;
 }
 
 function renderCommitList(evidence) {
@@ -140,7 +140,7 @@ function renderAccountChatPanel(accountLogin) {
     <div class="account-chat-heading">
       <span class="card-kicker">GHOST INTERROGATION / FOLLOW-UP</span>
       <h3>Question the ghost of @${escapeHtml(accountLogin)}</h3>
-      <p>Ask anything about this account’s public GitHub trail: projects, visible technologies, and recorded activity. Follow-up answers are grounded in available evidence, not private knowledge. For deeper investigations, compare accounts, question a repository’s health, or find your next contribution.</p>
+      <p>Welcome to the interrogation room. One username, a trail of public projects, and questions the record may or may not answer. Ask about the repositories, technologies, and activity this account has left in public. RepoGhost follows the trail, but cannot see private lives or invent what it cannot verify. For deeper investigations, compare two shadows, inspect a silent repository, or follow an issue toward your next contribution.</p>
     </div>
     <div id="account-chat-messages" class="account-chat-messages" aria-live="polite">
       <div class="account-chat-empty"><strong>The ghost is listening.</strong><p>Ask what the record remembers: “Which project best matches a React Native role?” or “What public evidence supports this developer’s recent work?”</p></div>
@@ -200,7 +200,7 @@ function attachAccountChat(account) {
     chatInput.value = '';
     chatInput.disabled = true;
     chatSubmit.disabled = true;
-    chatSubmit.querySelector('span:first-child').textContent = 'Thinking…';
+    chatSubmit.querySelector('span:first-child').textContent = 'Listening…';
 
     try {
       const response = await fetch('/api/account/ask', {
@@ -251,7 +251,7 @@ function attachAccountChat(account) {
     } finally {
       chatInput.disabled = false;
       chatSubmit.disabled = false;
-      chatSubmit.querySelector('span:first-child').textContent = 'Ask RepoGhost';
+      chatSubmit.querySelector('span:first-child').textContent = 'Interrogate the ghost';
       chatInput.focus();
     }
   });
@@ -440,7 +440,7 @@ async function inspectRepositoryInline(repositoryUrl, button) {
     button.setAttribute('aria-expanded', String(expanded));
     button.innerHTML = expanded
       ? 'Close case file <span aria-hidden="true">−</span>'
-      : 'View evidence <span aria-hidden="true">↗</span>';
+      : 'Open case file <span aria-hidden="true">↗</span>';
     if (expanded) existing.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     return;
   }
@@ -483,7 +483,7 @@ async function inspectRepositoryInline(repositoryUrl, button) {
       escapeHtml(error.message || 'Something went wrong. Please try again.') + '</p></div>';
   } finally {
     button.disabled = false;
-    button.innerHTML = 'Hide evidence <span aria-hidden="true">−</span>';
+    button.innerHTML = 'Close case file <span aria-hidden="true">−</span>';
     button.setAttribute('aria-expanded', 'true');
   }
 }
