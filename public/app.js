@@ -56,8 +56,8 @@ function renderOverview(evidence) {
   return `<section class="repo-overview" aria-label="Repository overview">
     <div>
       <div class="repo-title-row"><a class="repo-title" href="${escapeHtml(repo.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(repo.fullName)} ↗</a>${status}${repo.disabled ? '<span class="pill warn">Disabled</span>' : ''}</div>
-      <p class="repo-description">${escapeHtml(repo.description || 'No repository description is published.')}</p>
-      <div class="repo-topics">${(repo.topics || []).map((topic) => `<span class="topic">${escapeHtml(topic)}</span>`).join('') || '<span class="topic">No topics listed</span>'}</div>
+      <p class="repo-description">${escapeHtml(repo.description || 'No description survives in the public record.')}</p>
+      <div class="repo-topics">${(repo.topics || []).map((topic) => `<span class="topic">${escapeHtml(topic)}</span>`).join('') || '<span class="topic">No tags left behind</span>'}</div>
       ${renderSources(evidence, ['repository'])}
     </div>
     <div class="repo-stats">
@@ -74,22 +74,22 @@ function renderOverview(evidence) {
 function renderAiUnavailable(status) {
   const message = status?.message || 'The AI analysis could not be completed. No AI findings have been fabricated.';
   const isMissingKey = status?.code === 'AI_NOT_CONFIGURED';
-  return `<section class="analysis-unavailable" role="status"><span class="notice-mark" aria-hidden="true">${isMissingKey ? '◇' : '!'}</span><div><strong>${isMissingKey ? 'Evidence loaded · AI not configured' : `Evidence loaded · ${escapeHtml(status?.code || 'AI unavailable')}`}</strong><p>${escapeHtml(message)}${isMissingKey ? ' Configure the key in your server environment; never put it in the browser.' : ''}</p></div></section>`;
+  return `<section class="analysis-unavailable" role="status"><span class="notice-mark" aria-hidden="true">${isMissingKey ? '◇' : '!'}</span><div><strong>${isMissingKey ? 'The trail is here · the machine is silent' : `Evidence loaded · ${escapeHtml(status?.code || 'AI unavailable')}`}</strong><p>${escapeHtml(message)}${isMissingKey ? ' Configure the key in your server environment; never put it in the browser.' : ''}</p></div></section>`;
 }
 
 function renderSignals(evidence, analysis) {
   const signals = analysis.health.signals || [];
-  if (!signals.length) return '<div class="empty-state"><strong>No additional signals were returned.</strong>The repository evidence remains available above and below.</div>';
+  if (!signals.length) return '<div class="empty-state"><strong>No further omens surfaced.</strong>The collected repository evidence remains above and below.</div>';
   return `<ul class="signal-list">${signals.map((signal) => `<li><div class="signal-title">${escapeHtml(signal.claim)}</div><div class="signal-meta"><span class="signal-type ${signal.kind === 'observed' ? '' : 'hypothesis'}">${signal.kind === 'observed' ? 'Observed' : 'Inference'}</span><span class="confidence">${escapeHtml(signal.confidence)} confidence</span></div>${renderSources(evidence, signal.sourceIds)}</li>`).join('')}</ul>`;
 }
 
 function renderFacts(evidence, analysis) {
-  if (!analysis.facts.length) return '<div class="empty-state"><strong>No separate facts were returned.</strong>See the evidence panels for directly verifiable details.</div>';
+  if (!analysis.facts.length) return '<div class="empty-state"><strong>No separate facts surfaced from this pass.</strong>Search the evidence panels for details the record can verify.</div>';
   return `<ul class="finding-list">${analysis.facts.map((fact) => `<li><div class="signal-title">${escapeHtml(fact.claim)}</div>${renderSources(evidence, fact.sourceIds)}</li>`).join('')}</ul>`;
 }
 
 function renderRisks(evidence, analysis) {
-  if (!analysis.risks.length) return '<p>No maintenance risks met the evidence threshold for this pass. That is not proof the project has no risks.</p>';
+  if (!analysis.risks.length) return '<p>No potential danger crossed the evidence threshold this time. That does not prove the project is free of risk.</p>';
   return `<ul class="finding-list">${analysis.risks.map((risk) => `<li><div class="signal-title">${escapeHtml(risk.claim)}</div><div class="signal-meta"><span class="signal-type hypothesis">Potential risk</span><span class="confidence">${escapeHtml(risk.confidence)} confidence</span></div><p>${escapeHtml(risk.whyInferred)}</p>${renderSources(evidence, risk.sourceIds)}</li>`).join('')}</ul>`;
 }
 
@@ -98,24 +98,24 @@ function renderRecommendations(evidence, analysis) {
 }
 
 function renderCommitList(evidence) {
-  if (!evidence.commits?.length) return '<p>No recent commits were returned by GitHub.</p>';
+  if (!evidence.commits?.length) return '<p>No recent commit echoes were returned by GitHub.</p>';
   return `<div class="commit-list">${evidence.commits.map((commit) => `<a class="commit-row" href="${escapeHtml(commit.url || evidence.repository.url)}" target="_blank" rel="noopener noreferrer"><span class="commit-message">${escapeHtml(commit.message)}</span><span class="commit-meta"><span>${escapeHtml(commit.sha)}</span><span>${escapeHtml(relativeDate(commit.date))}</span><span>${escapeHtml(commit.author)}</span></span></a>`).join('')}</div>`;
 }
 
 function renderIssueList(evidence) {
-  if (!evidence.issues?.length) return '<p>No open issues were returned. This may mean none are open, or there is nothing visible through the public API.</p>';
+  if (!evidence.issues?.length) return '<p>No open wounds appeared in this sample. There may be no open issues, or the public API may not show them.</p>';
   return `<div class="issue-list">${evidence.issues.map((issue) => `<a class="issue-row" href="${escapeHtml(issue.url || evidence.repository.url)}" target="_blank" rel="noopener noreferrer"><span class="issue-title">#${Number(issue.number)} · ${escapeHtml(issue.title)}</span><span class="issue-meta"><span>${escapeHtml(relativeDate(issue.updatedAt))}</span><span>${Number(issue.comments)} comments</span></span></a>`).join('')}</div>`;
 }
 
 function renderReadme(evidence) {
-  if (!evidence.readme) return '<div class="empty-state"><strong>No README found through the public API.</strong>Missing documentation is a data point, not a diagnosis.</div>';
+  if (!evidence.readme) return '<div class="empty-state"><strong>No README trace was found through the public API.</strong>The missing page is a clue, not a diagnosis.</div>';
   const clipped = evidence.readme.content || '';
   const excerpt = clipped.split('\n').slice(0, 28).join('\n');
   return `<p>Source: ${escapeHtml(evidence.readme.path)}${evidence.readme.truncated ? ' · excerpt truncated' : ''}</p><pre class="readme-excerpt">${escapeHtml(excerpt || 'The README is present but empty.')}</pre>${renderSources(evidence, ['readme'])}`;
 }
 
 function renderRelease(evidence) {
-  if (!evidence.release) return '<div class="empty-state"><strong>No latest release found.</strong>Not every project uses GitHub Releases. Tags and package registries may hold additional history.</div>';
+  if (!evidence.release) return '<div class="empty-state"><strong>No latest release signal was found.</strong>Not every project leaves releases here. Tags or package registries may hold another part of the story.</div>';
   const release = evidence.release;
   return `<h3>${escapeHtml(release.name)}</h3><p>${escapeHtml(release.tag || 'No tag name returned')} · Published ${escapeHtml(formatDate(release.publishedAt))}</p>${release.draft ? '<span class="pill warn">Draft release</span>' : ''}${release.prerelease ? '<span class="pill warn">Pre-release</span>' : ''}${renderSources(evidence, ['release'])}`;
 }
@@ -128,29 +128,29 @@ function renderDiscoveredRepository(repository) {
   return `<article class="discovered-repo">
     <div class="discovered-repo-main">
       <div class="discovered-repo-heading"><a class="discovered-repo-title" href="${escapeHtml(repository.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(repository.fullName)} <span aria-hidden="true">↗</span></a>${flags}</div>
-      <p class="discovered-repo-description">${escapeHtml(repository.description || 'No public description provided.')}</p>
-      <div class="discovered-repo-meta"><span>${escapeHtml(repository.language || 'Unknown language')}</span><span><span aria-hidden="true">★</span> ${Number(repository.stars || 0).toLocaleString()} stars</span><span>Pushed ${escapeHtml(relativeDate(repository.pushedAt))}</span></div>
+      <p class="discovered-repo-description">${escapeHtml(repository.description || 'No description left in the public record.')}</p>
+      <div class="discovered-repo-meta"><span>${escapeHtml(repository.language || 'Unknown language')}</span><span><span aria-hidden="true">★</span> ${Number(repository.stars || 0).toLocaleString()} stars</span><span>Last echo ${escapeHtml(relativeDate(repository.pushedAt))}</span></div>
     </div>
-    <button type="button" class="repo-investigate-button" data-investigate-url="${escapeHtml(repository.url)}" aria-expanded="false">View evidence <span aria-hidden="true">↗</span></button>
+    <button type="button" class="repo-investigate-button" data-investigate-url="${escapeHtml(repository.url)}" aria-expanded="false">Open case file <span aria-hidden="true">↗</span></button>
   </article>`;
 }
 
 function renderAccountChatPanel(accountLogin) {
-  return `<section class="account-chat" aria-label="Ask questions about this GitHub account">
+  return `<section class="account-chat" aria-label="Interrogate the public trail of this GitHub account">
     <div class="account-chat-heading">
       <span class="card-kicker">GHOST INTERROGATION / FOLLOW-UP</span>
       <h3>Question the ghost of @${escapeHtml(accountLogin)}</h3>
       <p>Ask anything about this account’s public GitHub trail: projects, visible technologies, and recorded activity. Follow-up answers are grounded in available evidence, not private knowledge. For deeper investigations, compare accounts, question a repository’s health, or find your next contribution.</p>
     </div>
     <div id="account-chat-messages" class="account-chat-messages" aria-live="polite">
-      <div class="account-chat-empty"><strong>What would you like to know?</strong><p>Try “Which project best matches a React Native role?” or “What public evidence supports this developer’s recent work?”</p></div>
+      <div class="account-chat-empty"><strong>The ghost is listening.</strong><p>Ask what the record remembers: “Which project best matches a React Native role?” or “What public evidence supports this developer’s recent work?”</p></div>
     </div>
     <form id="account-chat-form" class="account-chat-form">
       <label class="sr-only" for="account-chat-question">Question about this GitHub account</label>
-      <textarea id="account-chat-question" name="question" rows="2" maxlength="500" placeholder="Ask a question about this account..." required></textarea>
-      <button id="account-chat-submit" type="submit"><span>Ask RepoGhost</span><span aria-hidden="true">↗</span></button>
+      <textarea id="account-chat-question" name="question" rows="2" maxlength="500" placeholder="Ask the ghost what the public record remembers…" required></textarea>
+      <button id="account-chat-submit" type="submit"><span>Interrogate the ghost</span><span aria-hidden="true">↗</span></button>
     </form>
-    <p class="account-chat-note">Public evidence only. RepoGhost cannot verify private activity, personal intentions, or skills from repository ownership alone.</p>
+    <p class="account-chat-note">THE BOUNDARY: public evidence only. This ghost cannot see private activity, read personal intentions, or prove skill from repository ownership alone.</p>
   </section>`;
 }
 
@@ -178,7 +178,7 @@ function attachAccountChat(account) {
         ? '<div class="account-chat-uncertainty"><strong>Limits to this answer</strong><ul>' +
           uncertainty.map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></div>'
         : '';
-      article.innerHTML = '<div class="account-chat-role">REPOGHOST</div><p class="account-chat-text">' +
+      article.innerHTML = '<div class="account-chat-role">THE GHOST</div><p class="account-chat-text">' +
         escapeHtml(content).replace(/\n/g, '<br>') + '</p>' + citationMarkup + uncertaintyMarkup;
     }
     if (chatMessages.querySelector('.account-chat-empty')) chatMessages.innerHTML = '';
@@ -195,7 +195,7 @@ function attachAccountChat(account) {
       return;
     }
     appendChatMessage('user', question);
-    const pending = appendChatMessage('assistant', 'RepoGhost is checking the account evidence…');
+    const pending = appendChatMessage('assistant', 'The ghost is searching the public record…');
     pending.classList.add('pending');
     chatInput.value = '';
     chatInput.disabled = true;
@@ -221,7 +221,7 @@ function attachAccountChat(account) {
       }
       pending.classList.remove('pending');
       if (payload.answer) {
-        const replyLabel = payload.status?.code === 'CONVERSATION' ? 'REPOGHOST / CHAT' : 'REPOGHOST / EVIDENCE ANSWER';
+        const replyLabel = payload.status?.code === 'CONVERSATION' ? 'THE GHOST / WHISPER' : 'THE GHOST / ANSWER FROM THE RECORD';
         pending.innerHTML = '<div class="account-chat-role">' + replyLabel + '</div><p class="account-chat-text">' +
           escapeHtml(payload.answer).replace(/\n/g, '<br>') + '</p>' +
           ((payload.citations || []).length
@@ -237,16 +237,16 @@ function attachAccountChat(account) {
         chatHistory.push({ role: 'assistant', content: payload.answer });
       } else {
         const status = payload.status || {};
-        pending.innerHTML = '<div class="account-chat-role">NO VERIFIED ANSWER</div><p class="account-chat-text">' +
+        pending.innerHTML = '<div class="account-chat-role">NO ANSWER FROM THE DARK</div><p class="account-chat-text">' +
           escapeHtml(status.message || 'RepoGhost could not produce a verified answer.') +
-          '</p><p class="account-chat-note">No answer was invented. You can retry after the provider is available.</p>';
+          '</p><p class="account-chat-note">No answer has been invented to fill the silence. You can try again when the inference provider returns.</p>';
         pending.classList.add('unavailable');
       }
       chatMessages.scrollTop = chatMessages.scrollHeight;
     } catch (error) {
       pending.classList.remove('pending');
       pending.classList.add('unavailable');
-      pending.innerHTML = '<div class="account-chat-role">QUESTION INTERRUPTED</div><p class="account-chat-text">' +
+      pending.innerHTML = '<div class="account-chat-role">THE SIGNAL BROKE</div><p class="account-chat-text">' +
         escapeHtml(error.message || 'Something went wrong. Please try again.') + '</p>';
     } finally {
       chatInput.disabled = false;
@@ -261,19 +261,19 @@ function showRepositoryDiscovery(discovery) {
   lastDiscovery = discovery;
   const account = discovery.account || {};
   const accountTitle = account.name ? `${account.name} · @${account.login}` : `@${account.login}`;
-  resultsContent.innerHTML = `<section class="repository-discovery" aria-label="Discovered public repositories">
+  resultsContent.innerHTML = `<section class="repository-discovery" aria-label="Discovered public tracesitories">
     <div class="discovery-account">
       <div class="discovery-account-mark" aria-hidden="true">${account.type === 'Organization' ? 'ORG' : 'GH'}</div>
-      <div class="discovery-account-copy"><span class="card-kicker">GITHUB / ACCOUNT FOUND</span><h3><a href="${escapeHtml(account.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(accountTitle)} ↗</a></h3><p>${escapeHtml(account.bio || (account.type === 'Organization' ? 'Public organization repositories' : 'Public repositories owned by this account'))}</p></div>
+      <div class="discovery-account-copy"><span class="card-kicker">SIGNAL DETECTED / ACCOUNT LOCATED</span><h3><a href="${escapeHtml(account.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(accountTitle)} ↗</a></h3><p>${escapeHtml(account.bio || (account.type === 'Organization' ? 'Public organization repositories' : 'Public repositories owned by this account'))}</p></div>
       <div class="discovery-account-stats"><strong>${Number(account.publicRepos || discovery.returnedCount || 0).toLocaleString()}</strong><span>public repos</span></div>
     </div>
     <div class="repository-picker-toolbar">
-      <label class="repository-search-wrap"><span class="sr-only">Filter repositories</span><span aria-hidden="true">⌕</span><input id="repository-search" type="search" placeholder="Filter by repository, description, or language" autocomplete="off"></label>
-      <label class="repository-sort-wrap"><span>Sort</span><select id="repository-sort" aria-label="Sort repositories"><option value="pushed">Recently pushed</option><option value="stars">Most stars</option><option value="name">Name A–Z</option></select></label>
+      <label class="repository-search-wrap"><span class="sr-only">Filter repositories</span><span aria-hidden="true">⌕</span><input id="repository-search" type="search" placeholder="Search the archive by name, description, or language…" autocomplete="off"></label>
+      <label class="repository-sort-wrap"><span>Order the traces</span><select id="repository-sort" aria-label="Order public repositories"><option value="pushed">Freshest echoes</option><option value="stars">Most stars</option><option value="name">Name A–Z</option></select></label>
     </div>
     <p class="repository-result-count" id="repository-result-count"></p>
     <div class="repository-list" id="repository-picker-list"></div>
-    ${discovery.limitReached ? '<p class="discovery-limit-note">Showing the first 100 public repositories, ordered by recent pushes. Narrow the search to find a specific project.</p>' : ''}
+    ${discovery.limitReached ? '<p class="discovery-limit-note">The public trail returned more than 100 repositories. This case file shows the first 100 by recent activity; narrow the archive search to find a specific project.</p>' : ''}
     ${renderAccountChatPanel(account.login)}
   </section>`;
 
@@ -294,10 +294,10 @@ function showRepositoryDiscovery(discovery) {
       if (sort === 'name') return String(left.fullName).localeCompare(String(right.fullName));
       return (Date.parse(right.pushedAt || '') || 0) - (Date.parse(left.pushedAt || '') || 0);
     });
-    resultCount.textContent = `${visible.length.toLocaleString()} of ${(discovery.repositories || []).length.toLocaleString()} repositories`;
+    resultCount.textContent = `${visible.length.toLocaleString()} of ${(discovery.repositories || []).length.toLocaleString()} traces in the record`;
     repositoryList.innerHTML = visible.length
       ? visible.map(renderDiscoveredRepository).join('')
-      : '<div class="empty-state"><strong>No matching repositories.</strong>Try a different search term.</div>';
+      : '<div class="empty-state"><strong>No matching traces found.</strong>Try another name, description, or language.</div>';
   }
 
   searchInput.addEventListener('input', updateRepositoryList);
@@ -323,18 +323,18 @@ function renderAnalysis(evidence, analysis) {
   const score = Math.max(0, Math.min(100, Math.round(analysis.health.score)));
   return `<div class="evidence-layout">
     <div class="stack">
-      <section class="result-card"><div class="card-kicker">AI / PROJECT SUMMARY</div><h3>What this project does</h3><p>${escapeHtml(analysis.projectSummary)}</p>${renderSources(evidence, analysis.facts.flatMap((fact) => fact.sourceIds).slice(0, 3))}</section>
-      <section class="result-card"><div class="card-kicker">AI / HEALTH ASSESSMENT</div><div class="health-head"><div class="score-ring" role="img" aria-label="Health score ${score} out of 100"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="score-track" cx="32" cy="32" r="27"></circle><circle class="score-progress" cx="32" cy="32" r="27" stroke-dasharray="${Math.round((score / 100) * 169.65)} 169.65" transform="rotate(-90 32 32)"></circle></svg><strong>${score}</strong></div><div><h3 class="health-title">${escapeHtml(analysis.health.label)}</h3><p class="health-subtitle">AI assessment · 0–100 signal score, not a guarantee</p></div></div><p>${escapeHtml(analysis.health.rationale)}</p>${renderSignals(evidence, analysis)}</section>
-      <section class="result-card"><div class="card-kicker">EVIDENCE / VERIFIED FACTS</div><h3>What the record shows</h3>${renderFacts(evidence, analysis)}</section>
-      <section class="result-card"><div class="card-kicker">INFERENCE / MAINTENANCE RISKS</div><h3>What may need attention</h3>${renderRisks(evidence, analysis)}</section>
+      <section class="result-card"><div class="card-kicker">PROJECT REMNANTS / SUMMARY</div><h3>What this project was built to do</h3><p>${escapeHtml(analysis.projectSummary)}</p>${renderSources(evidence, analysis.facts.flatMap((fact) => fact.sourceIds).slice(0, 3))}</section>
+      <section class="result-card"><div class="card-kicker">PROJECT PULSE / AI ASSESSMENT</div><div class="health-head"><div class="score-ring" role="img" aria-label="Health score ${score} out of 100"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="score-track" cx="32" cy="32" r="27"></circle><circle class="score-progress" cx="32" cy="32" r="27" stroke-dasharray="${Math.round((score / 100) * 169.65)} 169.65" transform="rotate(-90 32 32)"></circle></svg><strong>${score}</strong></div><div><h3 class="health-title">${escapeHtml(analysis.health.label)}</h3><p class="health-subtitle">Machine reading · 0–100 signal score, never a prophecy</p></div></div><p>${escapeHtml(analysis.health.rationale)}</p>${renderSignals(evidence, analysis)}</section>
+      <section class="result-card"><div class="card-kicker">FACTS FROM THE RECORD</div><h3>What the traces can prove</h3>${renderFacts(evidence, analysis)}</section>
+      <section class="result-card"><div class="card-kicker">WARNING SIGNS / HYPOTHESES</div><h3>What may be decaying</h3>${renderRisks(evidence, analysis)}</section>
     </div>
     <div class="stack">
-      <section class="result-card"><div class="card-kicker">ACTION / REVIVAL PLAN</div><h3>Three prioritized next steps</h3>${renderRecommendations(evidence, analysis)}</section>
-      <section class="result-card"><div class="card-kicker">GITHUB / COMMIT TRAIL</div><h3>Recent commits <span class="pill neutral">${evidence.commits.length} sampled</span></h3>${renderCommitList(evidence)}</section>
-      <section class="result-card"><div class="card-kicker">GITHUB / ISSUE BACKLOG</div><h3>Open issues <span class="pill neutral">${evidence.issues.length} sampled</span></h3>${renderIssueList(evidence)}</section>
-      <section class="result-card"><div class="card-kicker">GITHUB / DOCUMENTATION</div><h3>README trace</h3>${renderReadme(evidence)}</section>
-      <section class="result-card"><div class="card-kicker">GITHUB / RELEASE HISTORY</div><h3>Latest release</h3>${renderRelease(evidence)}</section>
-      ${analysis.uncertainty?.length ? `<section class="result-card"><div class="card-kicker">LIMITS / UNCERTAINTY</div><h3>What we cannot conclude</h3><ul class="finding-list">${analysis.uncertainty.map((item) => `<li><p>${escapeHtml(item)}</p></li>`).join('')}</ul></section>` : ''}
+      <section class="result-card"><div class="card-kicker">RESURRECTION PLAN / ACTIONS</div><h3>Three steps to bring the project forward</h3>${renderRecommendations(evidence, analysis)}</section>
+      <section class="result-card"><div class="card-kicker">COMMIT ECHOES / GITHUB</div><h3>Recent commits <span class="pill neutral">${evidence.commits.length} sampled</span></h3>${renderCommitList(evidence)}</section>
+      <section class="result-card"><div class="card-kicker">OPEN WOUNDS / ISSUE BACKLOG</div><h3>Open issues <span class="pill neutral">${evidence.issues.length} sampled</span></h3>${renderIssueList(evidence)}</section>
+      <section class="result-card"><div class="card-kicker">THE README / THE PROJECT'S OWN WORDS</div><h3>README trace</h3>${renderReadme(evidence)}</section>
+      <section class="result-card"><div class="card-kicker">LAST TRANSMISSION / RELEASE HISTORY</div><h3>Latest release</h3>${renderRelease(evidence)}</section>
+      ${analysis.uncertainty?.length ? `<section class="result-card"><div class="card-kicker">WHAT THE GHOST CANNOT KNOW</div><h3>Where the evidence ends</h3><ul class="finding-list">${analysis.uncertainty.map((item) => `<li><p>${escapeHtml(item)}</p></li>`).join('')}</ul></section>` : ''}
     </div>
   </div>`;
 }
@@ -365,13 +365,13 @@ function clearFormError() {
 function showDiscoveryLoading() {
   resultsSection.hidden = false;
   resultsSection.setAttribute('aria-busy', 'true');
-  resultsContent.innerHTML = `<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Tracing this GitHub account…</strong><p>Finding public repositories and preparing your investigation. You can then inspect evidence, compare accounts, assess role relevance, investigate health, or find contribution opportunities.</p></div></div>`;
+  resultsContent.innerHTML = `<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Listening for a signal…</strong><p>RepoGhost is tracing the account’s public history. Repositories, commits, and project details will surface when GitHub returns them. Nothing private is being summoned.</p></div></div>`;
 }
 
 async function discoverAccount(username) {
   clearFormError();
   submitButton.disabled = true;
-  submitButton.querySelector('span:first-child').textContent = 'Searching…';
+  submitButton.querySelector('span:first-child').textContent = 'Summoning…';
   usernameInput.setAttribute('aria-invalid', 'false');
   showDiscoveryLoading();
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -393,7 +393,7 @@ async function discoverAccount(username) {
     }
     showRepositoryDiscovery(payload.discovery);
   } catch (error) {
-    resultsContent.innerHTML = `<div class="error-card"><strong>Repository discovery interrupted</strong><p>${escapeHtml(error.message || 'Something went wrong. Please try again.')}</p></div>`;
+    resultsContent.innerHTML = `<div class="error-card"><strong>The trail broke before the account surfaced</strong><p>${escapeHtml(error.message || 'Something went wrong. Please try again.')}</p></div>`;
   } finally {
     resultsSection.setAttribute('aria-busy', 'false');
     submitButton.disabled = false;
@@ -439,7 +439,7 @@ async function inspectRepositoryInline(repositoryUrl, button) {
     const expanded = !existing.hidden;
     button.setAttribute('aria-expanded', String(expanded));
     button.innerHTML = expanded
-      ? 'Hide evidence <span aria-hidden="true">−</span>'
+      ? 'Close case file <span aria-hidden="true">−</span>'
       : 'View evidence <span aria-hidden="true">↗</span>';
     if (expanded) existing.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     return;
@@ -449,11 +449,11 @@ async function inspectRepositoryInline(repositoryUrl, button) {
   detail.className = 'discovered-repo-detail';
   detail.setAttribute('aria-label', 'Repository evidence');
   detail.setAttribute('aria-live', 'polite');
-  detail.innerHTML = '<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Loading GitHub evidence…</strong><p>Public metadata, README, sampled commits, issues, and release records appear before AI analysis.</p></div></div>';
+  detail.innerHTML = '<div class="loading-card"><span class="spinner" aria-hidden="true"></span><div><strong>Lifting the veil on this repository…</strong><p>First come the public records: metadata, README, sampled commits, issues, and releases when available. AI interpretation follows separately.</p></div></div>';
   repositoryCard.append(detail);
   button.disabled = true;
   button.setAttribute('aria-expanded', 'true');
-  button.innerHTML = 'Loading… <span aria-hidden="true">◌</span>';
+  button.innerHTML = 'Opening the veil… <span aria-hidden="true">◌</span>';
 
   try {
     const response = await fetch('/api/evidence', {
@@ -472,14 +472,14 @@ async function inspectRepositoryInline(repositoryUrl, button) {
       throw new Error('The server did not return repository evidence. Please try again.');
     }
     detail.innerHTML = renderOverview(payload.evidence) +
-      '<div class="analysis-slot"><div class="loading-card" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>AI analysis is running separately</strong><p>The GitHub evidence is already available below; the model cannot hold it back.</p></div></div></div>' +
+      '<div class="analysis-slot"><div class="loading-card" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>A voice is stirring behind the veil…</strong><p>The public evidence is already here. The model is interpreting it separately; if it falls silent, the evidence will remain.</p></div></div></div>' +
       renderEvidenceOnly(payload.evidence) +
-      '<p class="uncertainty-note">These are public repository signals, not a verdict about the people behind the project. Check the linked sources before acting.</p>';
+      '<p class="uncertainty-note">These are echoes from a public repository, not a verdict about the people behind it. Follow the linked sources before believing the story or acting on it.</p>';
     detail.dataset.loaded = 'true';
     const analysisSlot = detail.querySelector('.analysis-slot');
     void loadRepositoryAnalysis(repositoryUrl, payload.evidence, analysisSlot);
   } catch (error) {
-    detail.innerHTML = '<div class="error-card"><strong>Repository evidence interrupted</strong><p>' +
+    detail.innerHTML = '<div class="error-card"><strong>The repository trail fractured</strong><p>' +
       escapeHtml(error.message || 'Something went wrong. Please try again.') + '</p></div>';
   } finally {
     button.disabled = false;
@@ -540,11 +540,11 @@ function renderIntelEmpty(message) {
 
 function renderIntelLoading(message) {
   return '<div class="loading-card" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>' +
-    escapeHtml(message) + '</strong><p>Collecting bounded public GitHub evidence. RepoGhost will not change the repositories.</p></div></div>';
+    escapeHtml(message) + '</strong><p>Following a bounded trail of public GitHub evidence. The ghost will not alter the source repositories.</p></div></div>';
 }
 
 function renderIntelError(message) {
-  return '<div class="error-card" role="alert"><strong>Investigation interrupted</strong><p>' + escapeHtml(message) + '</p></div>';
+  return '<div class="error-card" role="alert"><strong>The trail has been interrupted</strong><p>' + escapeHtml(message) + '</p></div>';
 }
 
 function renderIntelProject(project, assessment) {
@@ -566,15 +566,15 @@ function renderIntelProject(project, assessment) {
 function renderIntelAssessment(assessment) {
   if (!assessment || assessment.kind !== 'developer-assessment') return renderIntelError('The server did not return a developer assessment.');
   const sources = assessment.sources || [];
-  return '<div class="intel-result-heading"><div><span class="card-kicker">ASSESSMENT / @' + escapeHtml(assessment.account.login) +
+  return '<div class="intel-result-heading"><div><span class="card-kicker">PUBLIC TRAIL / @' + escapeHtml(assessment.account.login) +
     '</span><h3>' + escapeHtml(assessment.role) + '</h3></div><a class="intel-profile-link" href="' +
     escapeHtml(intelSafeUrl(assessment.account.url)) + '" target="_blank" rel="noopener noreferrer">Open profile ↗</a></div>' +
-    '<section class="intel-summary"><strong>Evidence summary</strong><p>' + escapeHtml(assessment.summary) + '</p>' +
+    '<section class="intel-summary"><strong>What the record reveals</strong><p>' + escapeHtml(assessment.summary) + '</p>' +
     renderIntelSourceLinks(sources, ['account-profile']) + '</section>' +
-    '<div class="intel-results-grid"><section class="intel-result-card"><span class="card-kicker">RELEVANT PROJECTS</span><h4>Projects to inspect</h4>' +
+    '<div class="intel-results-grid"><section class="intel-result-card"><span class="card-kicker">CLUES / RELEVANT PROJECTS</span><h4>Projects worth examining</h4>' +
     ((assessment.relevantProjects || []).length ? assessment.relevantProjects.map((project) => renderIntelProject(project, assessment)).join('') :
       renderIntelEmpty('No strong role-specific metadata match was found in the returned public repository sample.')) +
-    '</section><section class="intel-result-card"><span class="card-kicker">TECHNOLOGY SIGNALS</span><h4>Technologies seen in metadata or inspected README excerpts</h4>' +
+    '</section><section class="intel-result-card"><span class="card-kicker">TECHNOLOGY TRACES</span><h4>Technologies seen in metadata or inspected README excerpts</h4>' +
     ((assessment.demonstratedTechnologies || []).length ? '<div class="intel-tech-list">' + assessment.demonstratedTechnologies.map((tech) =>
       '<div><strong>' + escapeHtml(tech.technology) + '</strong><span>' + tech.repositoryCount + ' project(s)</span>' +
       renderIntelSourceLinks(sources, tech.sourceIds) + '</div>').join('') + '</div>' : renderIntelEmpty('No specific technologies were verified from the selected evidence.')) +
@@ -583,7 +583,7 @@ function renderIntelAssessment(assessment) {
     ((assessment.activity.recentRepositories || []).length ? '<ul class="intel-mini-list">' + assessment.activity.recentRepositories.map((item) =>
       '<li><a href="' + escapeHtml(intelSafeUrl(item.url)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.repository) +
       ' ↗</a> — pushed ' + escapeHtml(formatDate(item.pushedAt)) + '</li>').join('') + '</ul>' : renderIntelEmpty('No push dates were available in this returned sample.')) +
-    '</section><section class="intel-result-card"><span class="card-kicker">SUPPORTED SIGNALS</span><h4>Evidence-backed strengths</h4>' +
+    '</section><section class="intel-result-card"><span class="card-kicker">WHAT THE RECORD SUPPORTS</span><h4>Evidence-backed signals</h4>' +
     '<ul class="intel-finding-list">' + (assessment.strengths || []).map((item) => '<li><p>' + escapeHtml(item.claim) + '</p>' +
       renderIntelSourceLinks(sources, item.sourceIds) + '</li>').join('') + '</ul></section>' +
     '<section class="intel-result-card"><span class="card-kicker">WHAT REMAINS UNKNOWN</span><h4>Evidence gaps</h4><ul class="intel-finding-list">' +
@@ -626,10 +626,10 @@ function renderIntelComparison(comparison) {
       '</div>';
   };
   return '<div class="intel-result-heading"><div><span class="card-kicker">ACCOUNT COMPARISON</span><h3>' + escapeHtml(comparison.goal) + '</h3></div></div>' +
-    '<section class="intel-summary"><strong>What the evidence suggests</strong><p>' + escapeHtml(comparison.summary) +
+    '<section class="intel-summary"><strong>What the traces suggest</strong><p>' + escapeHtml(comparison.summary) +
     '</p><p class="intel-evidence-note">This is a relevance comparison, not an overall ranking of developer quality.</p></section>' +
     '<div class="intel-compare-grid">' + renderSide(left) + renderSide(right) + '</div>' +
-    '<section class="intel-result-card intel-criteria"><span class="card-kicker">EXPLICIT COMPARISON CRITERIA</span>' +
+    '<section class="intel-result-card intel-criteria"><span class="card-kicker">TWO SHADOWS / EXPLICIT CRITERIA</span>' +
     (comparison.criteria || []).map((criterion) => '<div class="intel-criterion"><h4>' + escapeHtml(criterion.label) + '</h4>' +
       '<div class="intel-criterion-values"><div><span>@' + escapeHtml(left.account.login) + '</span><p>' + escapeHtml(criterion.leftValue) + '</p>' +
       renderIntelSourceLinks(left.sources, criterion.leftSourceIds) + '</div><div><span>@' + escapeHtml(right.account.login) + '</span><p>' +
@@ -656,16 +656,16 @@ function renderIntelHealth(health) {
       ['License', repo.license || 'Not reported'],
       ['Latest release', health.sample && health.sample.releaseAvailable ? 'Found' : 'Not returned'],
     ].map((item) => '<div><span>' + escapeHtml(item[0]) + '</span><strong>' + escapeHtml(item[1]) + '</strong></div>').join('') + '</div>' +
-    '<div class="intel-results-grid"><section class="intel-result-card"><span class="card-kicker">OBSERVED SIGNALS</span><h4>What the snapshot shows</h4>' +
+    '<div class="intel-results-grid"><section class="intel-result-card"><span class="card-kicker">SIGNS FOUND IN THE DARK</span><h4>What the snapshot reveals</h4>' +
     '<ul class="intel-finding-list">' + (health.signals || []).map((signal) => '<li><strong>' + escapeHtml(signal.label) + '</strong><p>' +
       escapeHtml(signal.detail) + '</p>' + renderIntelSourceLinks(health.sources, signal.sourceIds) + '</li>').join('') + '</ul></section>' +
-    '<section class="intel-result-card"><span class="card-kicker">PRIORITIZED ACTIONS</span><h4>Read-only revival plan</h4>' +
+    '<section class="intel-result-card"><span class="card-kicker">RESURRECTION RITUAL / NEXT ACTIONS</span><h4>Read-only revival plan</h4>' +
     (health.revivalPlan || []).map((step) => '<article class="intel-plan-step"><span class="pill ' + (step.priority === 'P1' ? 'warn' : 'neutral') +
       '">' + escapeHtml(step.priority) + '</span><h4>' + escapeHtml(step.title) + '</h4><p>' + escapeHtml(step.action) + '</p><p>' +
       escapeHtml(step.why) + '</p><small>Verify: ' + escapeHtml(step.verification || '') + '</small><small>Estimate: ' +
       escapeHtml(step.estimate || 'Not estimated') + '</small>' + renderIntelSourceLinks(health.sources, step.sourceIds) + '</article>').join('') +
     '</section></div>' +
-    '<section class="intel-result-card"><span class="card-kicker">CONTRIBUTION LEADS</span><h4>Existing issues to inspect</h4>' +
+    '<section class="intel-result-card"><span class="card-kicker">TRACES LEFT BY CONTRIBUTORS</span><h4>Existing issues to inspect</h4>' +
     ((health.contributionOpportunities || []).length ? '<ul class="intel-finding-list">' + health.contributionOpportunities.map((opportunity) =>
       '<li><a href="' + escapeHtml(intelSafeUrl(opportunity.url)) + '" target="_blank" rel="noopener noreferrer">' +
       escapeHtml(opportunity.title) + ' ↗</a><p>' + escapeHtml(opportunity.detail) + '</p><p>' + escapeHtml(opportunity.complexity) + '</p>' +
@@ -678,8 +678,8 @@ function renderIntelHealth(health) {
 
 function renderIntelRecommendations(recommendations) {
   if (!recommendations || recommendations.kind !== 'repository-recommendations') return renderIntelError('The server did not return repository recommendations.');
-  return '<div class="intel-result-heading"><div><span class="card-kicker">PROJECT DISCOVERY / @' + escapeHtml(recommendations.account) +
-    '</span><h3>Matches for your goal</h3></div></div><section class="intel-summary"><p>' + escapeHtml(recommendations.summary) +
+  return '<div class="intel-result-heading"><div><span class="card-kicker">A TRAIL WORTH FOLLOWING / @' + escapeHtml(recommendations.account) +
+    '</span><h3>What surfaced from the search</h3></div></div><section class="intel-summary"><p>' + escapeHtml(recommendations.summary) +
     '</p></section>' +
     ((recommendations.recommendations || []).length ? '<div class="intel-recommendation-list">' + recommendations.recommendations.map((item) =>
       '<article class="intel-project"><div class="intel-project-head"><div><a href="' + escapeHtml(intelSafeUrl(item.url)) +
@@ -696,7 +696,7 @@ function renderIntelRecommendations(recommendations) {
         escapeHtml(lead.detail) + '</p>' + renderIntelSourceLinks(recommendations.sources, lead.sourceIds) + '</li>').join('') + '</ul>' : '') +
       '<h4>Suggested next actions</h4><ol class="intel-mini-list">' + (item.nextSteps || []).map((step) => '<li>' + escapeHtml(step) + '</li>').join('') + '</ol></article>').join('') +
       '</div>' : renderIntelEmpty('No clear metadata match was found. Try a more specific use case or a broader search.')) +
-    '<section class="intel-next-step"><strong>Contribution safety</strong><p>' + escapeHtml(recommendations.contributionGuidance) +
+    '<section class="intel-next-step"><strong>Before you enter the codebase</strong><p>' + escapeHtml(recommendations.contributionGuidance) +
     '</p></section><section class="intel-limitations"><strong>Scope and limitations</strong><ul>' +
     (recommendations.limitations || []).map((item) => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></section>' +
     ((recommendations.collectionWarnings || []).length ? '<section class="intel-limitations"><strong>Incomplete evidence collection</strong><ul>' +
@@ -762,19 +762,19 @@ bindIntelligenceForm('intel-assess-form', '/api/intelligence/assess', 'assessmen
   username: value('username'),
   role: value('role'),
   context: value('context'),
-}), renderIntelAssessment, 'Assessing public developer evidence…');
+}), renderIntelAssessment, 'Interrogating the public record…');
 
 bindIntelligenceForm('intel-compare-form', '/api/intelligence/compare', 'comparison', (value) => ({
   usernameA: value('usernameA'),
   usernameB: value('usernameB'),
   goal: value('goal'),
-}), renderIntelComparison, 'Comparing public account evidence…');
+}), renderIntelComparison, 'Comparing two shadows in the public record…');
 
 bindIntelligenceForm('intel-health-form', '/api/intelligence/health', 'health', (value) => ({
   repositoryUrl: value('repositoryUrl'),
-}), renderIntelHealth, 'Inspecting repository health signals…');
+}), renderIntelHealth, 'Listening for signs of life in the repository…');
 
 bindIntelligenceForm('intel-recommend-form', '/api/intelligence/recommend', 'recommendations', (value) => ({
   username: value('username'),
   goal: value('goal'),
-}), renderIntelRecommendations, 'Finding role- and goal-relevant repositories…');
+}), renderIntelRecommendations, 'Following clues toward a project worth waking…');
