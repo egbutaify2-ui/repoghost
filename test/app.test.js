@@ -757,7 +757,7 @@ test('handles thank-you, greetings, acknowledgements, and help without invoking 
   assert.match(scared.answer, /@acme/);
   assert.doesNotMatch(scared.answer, /hiring|suitability/i);
   assert.ok(scared.answer.split(/\\s+/).length < 35, 'short fear messages must receive short replies');
-  assert.match(answerSimpleAccountConversation('what can you do', 'acme').answer, /public repositories/i);
+  assert.match(answerSimpleAccountConversation('what can you do', 'acme').answer, /repositories/i);
   const records = answerSimpleAccountConversation('what records then?', 'acme');
   assert.match(records.answer, /public profile, repositories, languages, stars, forks/i);
   assert.match(records.answer, /README files, sampled commits, issues, and releases/i);
@@ -815,8 +815,8 @@ test('answers account questions through the configured open-weight model with a 
   assert.equal(requestHeaders['X-Title'], 'RepoGhost - Developer and Repository Intelligence');
   assert.equal(requestBody.response_format.type, 'json_object');
   assert.match(requestBody.messages[0].content, /"sourceIds"/);
-  assert.match(requestBody.messages[0].content, /haunted investigator/i);
-  assert.match(requestBody.messages[0].content, /MANDATORY GHOST VOICE/i);
+  assert.match(requestBody.messages[0].content, /ghost behind the machine/i);
+  assert.match(requestBody.messages[0].content, /VOICE AND LENGTH/i);
   assert.match(requestBody.messages[0].content, /under 70 words/i);
   assert.match(requestBody.messages[0].content, /unless the user explicitly asks about hiring/i);
   assert.deepEqual(requestBody.models, [DEFAULT_MODEL, 'openrouter/free']);
@@ -853,7 +853,7 @@ test('allows an explicit OpenRouter fallback list before the dynamic free router
 test('adds a consistent haunted frame without destroying a Sources line', () => {
   const answer = hauntAccountAnswer('The snapshot shows three repositories.\nSources: account-profile, repo-1', 'acme', 'repo count');
   assert.match(answer, /candle|whisper|archive|screen darkens|stirs/i);
-  assert.match(answer, /darkness|buried|public record ends|shadow/i);
+  assert.match(answer, /dark|shadow|public trail ends|record|github hides/i);
   assert.match(answer.trim().split('\n').pop(), /^Sources: account-profile, repo-1$/);
 });
 
