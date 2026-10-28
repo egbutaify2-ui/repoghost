@@ -147,9 +147,25 @@ async function verifyGithubAuthentication(fetchImpl = globalThis.fetch, env = pr
     if (!Number.isFinite(coreLimit) || coreLimit <= 0) {
       return { status: 'unavailable', authenticated: null };
     }
-    return coreLimit > 60
-      ? { status: 'authenticated', authenticated: true, rateLimit: coreLimit }
-      : { status: 'not_authenticated', authenticated: false, rateLimit: coreLimit };
+    if (coreLimit <= 60) {
+      return { status: 'not_authenticated', authenticated: false, rateLimit: coreLimit };
+    }
+
+    // Probe the exact public repository used by the live smoke test. A valid
+    // token may pass /rate_limit while a repository request still returns 404.
+    const repositoryResponse = await fetchResponse(fetchImpl, 'https://api.github.com/repos/egbutaify2-ui/repoghost', {
+      headers: githubHeaders('application/vnd.github+json', env),
+      timeoutMs: 5_000,
+    });
+    return {
+      status: 'authenticated',
+      authenticated: true,
+      rateLimit: coreLimit,
+      repositoryProbe: {
+        httpStatus: repositoryResponse.status,
+        accessible: repositoryResponse.ok,
+      },
+    };
   } catch {
     return { status: 'unavailable', authenticated: null };
   }

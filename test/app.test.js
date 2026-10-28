@@ -76,14 +76,25 @@ test('verifies real GitHub token authentication using the rate-limit endpoint wi
   try {
     let requestedUrl = '';
     let authorization = '';
+    const requestedUrls = [];
+    const authorizations = [];
     const result = await verifyGithubAuthentication(async (input, options = {}) => {
-      requestedUrl = String(input);
-      authorization = options.headers.Authorization;
-      return responseJson({ resources: { core: { limit: 5000, remaining: 4999 } } });
+      requestedUrls.push(String(input));
+      authorizations.push(options.headers.Authorization);
+      if (String(input) === 'https://api.github.com/rate_limit') {
+        return responseJson({ resources: { core: { limit: 5000, remaining: 4999 } } });
+      }
+      return responseJson({ full_name: 'egbutaify2-ui/repoghost' });
     });
-    assert.equal(requestedUrl, 'https://api.github.com/rate_limit');
-    assert.equal(authorization, 'Bearer ' + token);
-    assert.deepEqual(result, { status: 'authenticated', authenticated: true, rateLimit: 5000 });
+    assert.deepEqual(requestedUrls, [
+      'https://api.github.com/rate_limit',
+      'https://api.github.com/repos/egbutaify2-ui/repoghost',
+    ]);
+    assert.deepEqual(authorizations, ['Bearer ' + token, 'Bearer ' + token]);
+    assert.deepEqual(result, {
+      status: 'authenticated', authenticated: true, rateLimit: 5000,
+      repositoryProbe: { httpStatus: 200, accessible: true },
+    });
     assert.equal(JSON.stringify(result).includes(token), false);
   } finally {
     if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
@@ -487,9 +498,12 @@ test('health endpoint can verify GitHub authentication on demand', async (t) => 
   const server = createServer({
     logger: { error() {} },
     fetchImpl: async (input, options = {}) => {
-      assert.equal(String(input), 'https://api.github.com/rate_limit');
       requestedAuthorization = options.headers.Authorization;
-      return responseJson({ resources: { core: { limit: 5000, remaining: 4999 } } });
+      if (String(input) === 'https://api.github.com/rate_limit') {
+        return responseJson({ resources: { core: { limit: 5000, remaining: 4999 } } });
+      }
+      assert.equal(String(input), 'https://api.github.com/repos/egbutaify2-ui/repoghost');
+      return responseJson({ full_name: 'egbutaify2-ui/repoghost' });
     },
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -507,7 +521,10 @@ test('health endpoint can verify GitHub authentication on demand', async (t) => 
   const diagnostic = await fetch(root + '/api/health?verifyGithubAuth=1');
   assert.equal(diagnostic.status, 200);
   const body = await diagnostic.json();
-  assert.deepEqual(body.githubAuthVerification, { status: 'authenticated', authenticated: true, rateLimit: 5000 });
+  assert.deepEqual(body.githubAuthVerification, {
+    status: 'authenticated', authenticated: true, rateLimit: 5000,
+    repositoryProbe: { httpStatus: 200, accessible: true },
+  });
   assert.equal(requestedAuthorization, 'Bearer route-test-github-token');
   assert.equal(JSON.stringify(body).includes('route-test-github-token'), false);
 });
