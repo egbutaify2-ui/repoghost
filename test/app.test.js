@@ -1054,7 +1054,7 @@ test('serves username-only GitHub search with repository evidence and account ch
   assert.match(frontend, /\/api\/account\/ask/);
   assert.match(frontend, /\/api\/evidence/);
   assert.match(frontend, /\/api\/analyze/);
-  assert.match(frontend, /AI analysis is running separately/);
+  assert.match(frontend, /A voice is stirring behind the veil/);
   assert.match(frontend, /data-username/);
   assert.doesNotMatch(frontend, /repository-url/);
   assert.doesNotMatch(frontend, /data-entry-mode/);
