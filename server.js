@@ -450,7 +450,7 @@ function buildAccountEvidenceFallback(evidence, question, _providerStatus = {}) 
     const accountType = String(account.type).toLowerCase() === 'organization'
       ? 'a GitHub organization'
       : String(account.type).toLowerCase() === 'user'
-        ? an individual GitHub account
+        ? 'an individual GitHub account'
         : 'a GitHub account';
     facts.push('GitHub classifies ' + handle + ' as ' + accountType + '.');
   }
