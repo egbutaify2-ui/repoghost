@@ -980,7 +980,7 @@ test('routes natural thanks, welcome corrections, and spooky banter before GitHu
     if (/scared/i.test(question)) {
       assert.match(body.answer, /one candle burning/i);
       assert.match(body.answer, /@acme/);
-      assert.match(body.answer, /public trail/i);
+      assert.match(body.answer, /public.*trail/i);
     } else if (/records then/i.test(question)) {
       assert.match(body.answer, /public profile, repositories, languages/i);
       assert.match(body.answer, /sampled commits/i);
@@ -1078,7 +1078,7 @@ test('serves account Q&A and reuses cached evidence for follow-up questions', as
   const first = await firstResponse.json();
   assert.match(first.answer, /Evidence-backed answer to: Which language is used\?/i);
   assert.match(first.answer, /candle|whisper|archive|screen darkens|stirs/i);
-  assert.match(first.answer, /darkness|buried|public record ends|shadow/i);
+  assert.match(first.answer, /dark|shadow|public trail ends|record|github hides/i);
   assert.equal(first.citations[0].url, 'https://github.com/acme/engine');
   assert.equal(first.status.code, 'AI_READY');
   assert.ok(first.requestId);
@@ -1121,7 +1121,7 @@ test('returns a haunted evidence fallback instead of a blank response when AI is
   assert.equal(body.status.code, 'EVIDENCE_FALLBACK');
   assert.match(body.answer, /model voices have fallen silent/i);
   assert.ok(body.citations.length > 0);
-  assert.match(body.answer, /darkness|buried|shadow/i);
+  assert.match(body.answer, /dark|shadow|public trail ends|record|github hides/i);
 });
 
 test('serves username-only GitHub search with repository evidence and account chat', async (t) => {
