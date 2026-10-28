@@ -14,6 +14,9 @@ const {
   answerAccountHiringQuestion,
   answerSimpleAccountConversation,
   answerAccountForkQuestion,
+  accountFallbackModels,
+  hauntAccountAnswer,
+  buildAccountEvidenceFallback,
   buildAccountAnswerSchema,
   buildAccountQuestionSummary,
   buildAnalysisSchema,
@@ -738,17 +741,21 @@ test('requires account answers to cite a valid account evidence source', () => {
 test('handles thank-you, greetings, acknowledgements, and help without invoking AI', () => {
   const thanks = answerSimpleAccountConversation('thank you', 'acme');
   assert.equal(thanks.status.code, 'CONVERSATION');
-  assert.match(thanks.answer, /welcome/i);
+  assert.match(thanks.answer, /archive/i);
   const combinedThanks = answerSimpleAccountConversation('okay thank you', 'acme');
   assert.equal(combinedThanks.status.code, 'CONVERSATION');
-  assert.match(combinedThanks.answer, /welcome/i);
+  assert.match(combinedThanks.answer, /shadows/i);
   const welcomeCorrection = answerSimpleAccountConversation('you cant say you are wlcm or something?', 'acme');
   assert.equal(welcomeCorrection.status.code, 'CONVERSATION');
-  assert.match(welcomeCorrection.answer, /should have said/i);
+  assert.match(welcomeCorrection.answer, /deserved/i);
   assert.match(welcomeCorrection.answer, /welcome/i);
   assert.deepEqual(thanks.citations, []);
   assert.equal(answerSimpleAccountConversation('hello', 'acme').status.code, 'CONVERSATION');
   assert.match(answerSimpleAccountConversation('what can you do', 'acme').answer, /public repositories/i);
+  const records = answerSimpleAccountConversation('what records then?', 'acme');
+  assert.match(records.answer, /public traces GitHub leaves exposed/i);
+  assert.match(records.answer, /README passages, sampled commits, open issues, and releases/i);
+  assert.match(records.answer, /private repositories/i);
   assert.equal(answerSimpleAccountConversation('How many stars does this account have?', 'acme'), null);
 });
 
@@ -802,27 +809,56 @@ test('answers account questions through the configured open-weight model with a 
   assert.equal(requestHeaders['X-Title'], 'RepoGhost - Developer and Repository Intelligence');
   assert.equal(requestBody.response_format.type, 'json_object');
   assert.match(requestBody.messages[0].content, /"sourceIds"/);
+  assert.match(requestBody.messages[0].content, /haunted investigator/i);
+  assert.match(requestBody.messages[0].content, /MANDATORY GHOST VOICE/i);
+  assert.deepEqual(requestBody.models, [DEFAULT_MODEL, 'openrouter/free']);
   assert.match(requestBody.messages[1].content, /repo-1/);
   assert.equal(result.answer, 'The returned repository is written in TypeScript.');
   assert.equal(result.citations[0].url, 'https://github.com/acme/engine');
   assert.equal(result.status.code, 'AI_READY');
 });
 
-test('does not switch models when account inference returns 404', async () => {
+test('configures an ordered open-weight fallback chain for account inference', async () => {
   const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
   const requestedModels = [];
   const result = await answerAccountQuestion(evidence, 'Which language appears in the repository?', {
     env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
     openRouterBaseUrl: 'https://openrouter.test/api/v1',
     fetchImpl: async (_input, options) => {
-      requestedModels.push(JSON.parse(options.body).model);
-      return responseJson({ error: { message: 'No endpoints found for this model.' } }, 404);
+      requestedModels.push(JSON.parse(options.body).models);
+      return responseJson({ error: { message: 'No endpoints found for these models.' } }, 404);
     },
   });
-  assert.deepEqual(requestedModels, [DEFAULT_MODEL]);
+  assert.deepEqual(requestedModels, [[DEFAULT_MODEL, 'openrouter/free']]);
   assert.equal(result.status.code, 'AI_MODEL_UNAVAILABLE');
-  assert.match(result.status.message, /No endpoints found for this model/);
+  assert.match(result.status.message, /No endpoints found for these models/);
   assert.equal(result.answer, null);
+});
+
+test('allows an explicit OpenRouter fallback list before the dynamic free router', () => {
+  assert.deepEqual(
+    accountFallbackModels({ OPENROUTER_FALLBACK_MODELS: 'nvidia/nemotron-3-super:free, qwen/qwen3.5-27b:free' }, DEFAULT_MODEL),
+    [DEFAULT_MODEL, 'nvidia/nemotron-3-super:free', 'qwen/qwen3.5-27b:free', 'openrouter/free'],
+  );
+});
+
+test('adds a consistent haunted frame without destroying a Sources line', () => {
+  const answer = hauntAccountAnswer('The snapshot shows three repositories.\nSources: account-profile, repo-1', 'acme', 'repo count');
+  assert.match(answer, /candle|whisper|archive|screen darkens|stirs/i);
+  assert.match(answer, /darkness|buried|public record ends|shadow/i);
+  assert.match(answer.trim().split('\n').pop(), /^Sources: account-profile, repo-1$/);
+});
+
+test('builds an evidence-only answer when every model provider fails', () => {
+  const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
+  const answer = buildAccountEvidenceFallback(evidence, 'What does this account do?', {
+    code: 'AI_RATE_LIMIT',
+  });
+  assert.match(answer.answer, /model voices have fallen silent/i);
+  assert.match(answer.answer, /@acme/);
+  assert.ok(answer.citations.length > 0);
+  assert.equal(answer.status.code, 'EVIDENCE_FALLBACK');
+  assert.match(answer.uncertainty.join(' '), /unavailable/i);
 });
 
 test('returns the provider reason when the pinned model returns 404', async () => {
@@ -925,7 +961,7 @@ test('routes natural thanks, welcome corrections, and spooky banter before GitHu
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
-  for (const question of ['thank you', 'okay thank you', 'you cant say you are wlcm or something?', 'im scared of you ghost']) {
+  for (const question of ['thank you', 'okay thank you', 'you cant say you are wlcm or something?', 'im scared of you ghost', 'what records then?']) {
     const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -937,8 +973,14 @@ test('routes natural thanks, welcome corrections, and spooky banter before GitHu
       assert.match(body.answer, /one candle burning/i);
       assert.match(body.answer, /@acme/);
       assert.match(body.answer, /public trail/i);
+    } else if (/records then/i.test(question)) {
+      assert.match(body.answer, /public traces GitHub leaves exposed/i);
+      assert.match(body.answer, /sampled commits/i);
+      assert.match(body.answer, /darkness/i);
+    } else if (/cant say/i.test(question)) {
+      assert.match(body.answer, /deserved/i);
     } else {
-      assert.match(body.answer, /welcome/i);
+      assert.match(body.answer, /archive/i);
     }
     assert.equal(body.status.code, 'CONVERSATION');
     assert.deepEqual(body.citations, []);
@@ -1026,7 +1068,9 @@ test('serves account Q&A and reuses cached evidence for follow-up questions', as
   const firstResponse = await ask('Which language is used?');
   assert.equal(firstResponse.status, 200);
   const first = await firstResponse.json();
-  assert.equal(first.answer, 'Evidence-backed answer to: Which language is used?');
+  assert.match(first.answer, /Evidence-backed answer to: Which language is used\?/i);
+  assert.match(first.answer, /candle|whisper|archive|screen darkens|stirs/i);
+  assert.match(first.answer, /darkness|buried|public record ends|shadow/i);
   assert.equal(first.citations[0].url, 'https://github.com/acme/engine');
   assert.equal(first.status.code, 'AI_READY');
   assert.ok(first.requestId);
@@ -1042,6 +1086,35 @@ test('serves account Q&A and reuses cached evidence for follow-up questions', as
   assert.equal((await invalidQuestion.json()).error.code, 'INVALID_ACCOUNT_QUESTION');
 });
 
+
+test('returns a haunted evidence fallback instead of a blank response when AI is rate-limited', async (t) => {
+  const discovery = accountDiscoveryFixture();
+  const server = createServer({
+    logger: { error() {} },
+    discoverRepositories: async () => discovery,
+    collectAccountQuestionEvidence: async (value) => buildAccountQuestionSummary(value),
+    answerAccountQuestion: async () => ({
+      answer: null,
+      citations: [],
+      uncertainty: [],
+      status: { code: 'AI_RATE_LIMIT', message: 'All inference endpoints are rate-limited.' },
+      model: null,
+    }),
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'acme', question: 'What does this account do?' }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.status.code, 'EVIDENCE_FALLBACK');
+  assert.match(body.answer, /model voices have fallen silent/i);
+  assert.ok(body.citations.length > 0);
+  assert.match(body.answer, /darkness|buried|shadow/i);
+});
 
 test('serves username-only GitHub search with repository evidence and account chat', async (t) => {
   const server = createServer({ logger: { error() {} } });
