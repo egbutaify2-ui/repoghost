@@ -128,6 +128,33 @@ function githubHeaders(accept = 'application/vnd.github+json', env = process.env
   return headers;
 }
 
+async function verifyGithubAuthentication(fetchImpl = globalThis.fetch, env = process.env) {
+  const token = typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '';
+  if (!token) return { status: 'not_configured', authenticated: false };
+
+  try {
+    // GitHub documents GET /rate_limit as a no-quota-cost way to inspect the
+    // authenticated requester's rate-limit tier. Never return or log the token.
+    const response = await fetchResponse(fetchImpl, 'https://api.github.com/rate_limit', {
+      headers: githubHeaders('application/vnd.github+json', env),
+      timeoutMs: 5_000,
+    });
+    if (response.status === 401) return { status: 'rejected', authenticated: false };
+    if (!response.ok) return { status: 'unavailable', authenticated: null };
+
+    const payload = await response.json();
+    const coreLimit = Number(payload?.resources?.core?.limit ?? payload?.rate?.limit);
+    if (!Number.isFinite(coreLimit) || coreLimit <= 0) {
+      return { status: 'unavailable', authenticated: null };
+    }
+    return coreLimit > 60
+      ? { status: 'authenticated', authenticated: true, rateLimit: coreLimit }
+      : { status: 'not_authenticated', authenticated: false, rateLimit: coreLimit };
+  } catch {
+    return { status: 'unavailable', authenticated: null };
+  }
+}
+
 async function fetchResponse(fetchImpl, url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs || GITHUB_TIMEOUT_MS);
@@ -1564,12 +1591,27 @@ function createServer(dependencies = {}) {
   };
   return http.createServer(async (req, res) => {
     const requestId = randomUUID();
+    let requestUrl;
     let pathname;
-    try { pathname = new URL(req.url, 'http://localhost').pathname; }
-    catch { return sendJson(res, 400, { error: { code: 'INVALID_URL', message: 'Invalid request URL.' }, requestId }, requestId); }
+    try {
+      requestUrl = new URL(req.url, 'http://localhost');
+      pathname = requestUrl.pathname;
+    } catch {
+      return sendJson(res, 400, { error: { code: 'INVALID_URL', message: 'Invalid request URL.' }, requestId }, requestId);
+    }
 
     if (req.method === 'GET' && pathname === '/api/health') {
-      return sendJson(res, 200, { status: 'ok', service: 'RepoGhost', aiConfigured: Boolean(process.env.OPENROUTER_API_KEY), githubTokenConfigured: Boolean(typeof process.env.GITHUB_TOKEN === 'string' && process.env.GITHUB_TOKEN.trim()), model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL }, requestId);
+      const health = {
+        status: 'ok',
+        service: 'RepoGhost',
+        aiConfigured: Boolean(process.env.OPENROUTER_API_KEY),
+        githubTokenConfigured: Boolean(typeof process.env.GITHUB_TOKEN === 'string' && process.env.GITHUB_TOKEN.trim()),
+        model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
+      };
+      if (requestUrl.searchParams.get('verifyGithubAuth') === '1') {
+        health.githubAuthVerification = await verifyGithubAuthentication(fetchImpl);
+      }
+      return sendJson(res, 200, health, requestId);
     }
 
     if (req.method === 'POST' && pathname === '/api/discover') {
@@ -1807,6 +1849,7 @@ module.exports = {
   DEFAULT_MODEL,
   rateLimitMessage,
   githubHeaders,
+  verifyGithubAuthentication,
   HttpError,
   ModelResponseError,
   SYSTEM_PROMPT,

@@ -27,15 +27,15 @@ jobs:
           expected="google/gemma-4-26b-a4b-it:free"
 
           for attempt in $(seq 1 8); do
-            health_code="$(curl --silent --show-error --max-time 20 -o /tmp/health.json -w '%{http_code}' "$base/api/health" || true)"
-            if [[ "$health_code" == "200" ]] && jq -e --arg expected "$expected" '.status == "ok" and .aiConfigured == true and .model == $expected' /tmp/health.json >/dev/null; then
-              echo "Health check confirms AI is configured and the pinned model is active."
-              jq '{status, aiConfigured, model}' /tmp/health.json
+            health_code="$(curl --silent --show-error --max-time 20 -o /tmp/health.json -w '%{http_code}' "$base/api/health?verifyGithubAuth=1" || true)"
+            if [[ "$health_code" == "200" ]] && jq -e --arg expected "$expected" '.status == "ok" and .aiConfigured == true and .githubTokenConfigured == true and .githubAuthVerification.authenticated == true and .model == $expected' /tmp/health.json >/dev/null; then
+              echo "Health check confirms AI is configured, the GitHub token is accepted, and the pinned model is active."
+              jq '{status, aiConfigured, githubTokenConfigured, githubAuthVerification, model}' /tmp/health.json
               break
             fi
 
-            echo "Attempt $attempt: health endpoint is not yet ready for the expected model (HTTP $health_code)."
-            if [[ -f /tmp/health.json ]]; then jq '{status, aiConfigured, model}' /tmp/health.json || cat /tmp/health.json; fi
+            echo "Attempt $attempt: health endpoint has not confirmed AI/model/GitHub authentication (HTTP $health_code)."
+            if [[ -f /tmp/health.json ]]; then jq '{status, aiConfigured, githubTokenConfigured, githubAuthVerification, model}' /tmp/health.json || cat /tmp/health.json; fi
             if [[ "$attempt" == "8" ]]; then
               echo "The live health check did not confirm the expected model configuration."
               exit 1
@@ -58,6 +58,10 @@ jobs:
 
             echo "Attempt $attempt: live inference has not yet produced a validated Gemma report (HTTP $code)."
             if [[ -f /tmp/analysis.json ]]; then jq '{analysisStatus, model, error}' /tmp/analysis.json || cat /tmp/analysis.json; fi
+            if jq -e '.error.code == "GITHUB_RATE_LIMIT"' /tmp/analysis.json >/dev/null 2>&1; then
+              echo "GitHub rate limit reached; stopping retries instead of repeatedly calling a rate-limited endpoint."
+              exit 1
+            fi
             if [[ "$attempt" != "8" ]]; then sleep 10; fi
           done
 
