@@ -1202,7 +1202,7 @@ test('returns a haunted evidence fallback instead of a blank response when AI is
   const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'acme', question: 'What does this account do?' }),
+    body: JSON.stringify({ username: 'acme', question: 'Can public GitHub records reveal this account owner’s private motivation?' }),
   });
   assert.equal(response.status, 200);
   const body = await response.json();
