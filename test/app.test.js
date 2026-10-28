@@ -627,7 +627,7 @@ test('serves the landing page with secure headers', async (t) => {
   const response = await fetch(`http://127.0.0.1:${address.port}/`);
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-security-policy'), /default-src 'self'/);
-  assert.match(await response.text(), /Investigate public profiles/);
+  assert.match(await response.text(), /Every GitHub profile/);
 });
 
 
@@ -1063,14 +1063,14 @@ test('serves username-only GitHub search with repository evidence and account ch
   assert.equal(homeResponse.status, 200);
   const page = await homeResponse.text();
   assert.match(page, /id="github-username"/);
-  assert.match(page, /GitHub Developer &amp; Repository Intelligence/);
-  assert.match(page, /DEVELOPER \+ REPOSITORY INTELLIGENCE/);
+  assert.match(page, /RepoGhost — Every GitHub Profile Leaves a Ghost/);
+  assert.match(page, /PUBLIC TRAILS \/ HIDDEN PATTERNS/);
   assert.match(page, /id="intelligence-suite"/);
   assert.match(page, /id="intel-assess-form"/);
   assert.match(page, /id="intel-compare-form"/);
   assert.match(page, /id="intel-health-form"/);
   assert.match(page, /id="intel-recommend-form"/);
-  assert.match(page, /DEVELOPER INTELLIGENCE/);
+  assert.match(page, /QUESTION THE TRACES/);
   assert.ok(page.includes('Built by <strong>Egbuta Ifeanyi Chukwu</strong>'));
   assert.ok(page.includes('href="https://dev.to/egbutaify2ui"'));
   assert.ok(page.includes('href="https://github.com/egbutaify2-ui"'));
