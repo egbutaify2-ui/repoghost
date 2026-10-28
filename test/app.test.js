@@ -978,6 +978,8 @@ test('falls back to cited plain text when JSON mode fails', async () => {
   assert.equal(call, 2);
   assert.equal(requestBodies[0].response_format.type, 'json_object');
   assert.equal(requestBodies[1].response_format, undefined);
+  assert.match(requestBodies[1].messages[0].content, /FINAL RESPONSE MODE: Answer in clear, natural language\. Do not output JSON\./);
+  assert.doesNotMatch(requestBodies[1].messages[0].content, /Return only one JSON object matching the requested schema/i);
   assert.equal(result.status.code, 'AI_READY');
   assert.equal(result.model, DEFAULT_MODEL);
   assert.match(result.answer, /TypeScript parsing engine/);
@@ -1207,9 +1209,9 @@ test('returns a haunted evidence fallback instead of a blank response when AI is
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.status.code, 'EVIDENCE_FALLBACK');
-  assert.match(body.answer, /model voices have fallen silent/i);
+  assert.match(body.answer, /archive cannot verify a direct answer/i);
   assert.ok(body.citations.length > 0);
-  assert.match(body.answer, /dark|shadow|public trail ends|record|github hides/i);
+  assert.doesNotMatch(body.answer + ' ' + body.uncertainty.join(' '), /AI_RATE_LIMIT|AI_INVALID_OUTPUT|inference path/i);
 });
 
 test('serves username-only GitHub search with repository evidence and account chat', async (t) => {

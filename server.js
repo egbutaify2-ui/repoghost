@@ -437,67 +437,56 @@ function hauntAccountAnswer(answer, username, question = '') {
   return output;
 }
 
-function buildAccountEvidenceFallback(evidence, question, providerStatus = {}) {
+function buildAccountEvidenceFallback(evidence, question, _providerStatus = {}) {
   const account = evidence && evidence.account ? evidence.account : {};
-  const stats = evidence && evidence.stats ? evidence.stats : {};
   const repositories = Array.isArray(evidence && evidence.repositories) ? evidence.repositories : [];
   const sources = Array.isArray(evidence && evidence.sources) ? evidence.sources : [];
   const facts = [];
   const citedIds = new Set();
   const handle = account.login ? '@' + account.login : 'this account';
 
+  if (account.name) facts.push('The public profile name is "' + String(account.name).slice(0, 120) + '".');
+  if (account.type) {
+    const accountType = String(account.type).toLowerCase() === 'organization'
+      ? 'a GitHub organization'
+      : String(account.type).toLowerCase() === 'user'
+        ? an individual GitHub account
+        : 'a GitHub account';
+    facts.push('GitHub classifies ' + handle + ' as ' + accountType + '.');
+  }
+  if (account.bio) facts.push('The public bio says: "' + String(account.bio).slice(0, 180) + '".');
+
   if (sources.some((source) => source.id === 'account-profile')) citedIds.add('account-profile');
-  if (account.name) facts.push('The profile name reads "' + String(account.name).slice(0, 160) + '".');
-  if (account.type) facts.push('GitHub classifies this profile as a ' + String(account.type).toLowerCase() + '.');
-  if (account.bio) facts.push('The public bio says: "' + String(account.bio).slice(0, 220) + '".');
-
-  const reportedCount = Number(stats.publicRepositoriesReportedByGitHub);
-  const returnedCount = Number(stats.repositoriesReturnedForThisInvestigation);
-  if (Number.isFinite(reportedCount)) {
-    facts.push('GitHub reports ' + reportedCount + ' public repositories; this investigation returned ' +
-      (Number.isFinite(returnedCount) ? returnedCount : repositories.length) + ' for inspection.');
-  } else {
-    facts.push('This investigation returned ' + repositories.length + ' public repositories for inspection.');
-  }
-
-  const languageCounts = stats.languageCountsInReturnedRepositories && typeof stats.languageCountsInReturnedRepositories === 'object'
-    ? Object.entries(stats.languageCountsInReturnedRepositories).sort((left, right) => right[1] - left[1]).slice(0, 5)
-    : [];
-  if (languageCounts.length) {
-    facts.push('Language traces in the returned sample: ' + languageCounts.map(([language, count]) => language + ' (' + count + ')').join(', ') + '.');
-  } else {
-    facts.push('The returned snapshot did not establish a reliable language breakdown.');
-  }
-
   const topRepositories = [...repositories]
     .sort((left, right) => Number(right.stars || 0) - Number(left.stars || 0))
-    .slice(0, 4);
+    .slice(0, 2);
   for (const repository of topRepositories) {
-    const details = [
-      repository.language ? 'language: ' + repository.language : null,
-      'stars: ' + Number(repository.stars || 0),
-      'forks: ' + Number(repository.forks || 0),
-      repository.pushedAt ? 'last pushed: ' + String(repository.pushedAt).slice(0, 10) : null,
-    ].filter(Boolean).join(', ');
-    facts.push(repository.fullName + ' — ' + details + (repository.description ? '. Description: ' + String(repository.description).slice(0, 180) : '') + '.');
+    const description = typeof repository.description === 'string' ? repository.description.trim().replace(/\s+/g, ' ') : '';
+    const detail = description
+      ? 'description: "' + description.slice(0, 180) + '"'
+      : [
+          repository.language ? 'language: ' + repository.language : null,
+          'stars: ' + Number(repository.stars || 0),
+          'forks: ' + Number(repository.forks || 0),
+        ].filter(Boolean).join(', ');
+    facts.push(repository.fullName + ': ' + detail + '.');
     if (repository.sourceId) citedIds.add(repository.sourceId);
   }
 
-  if (!facts.length) facts.push('The available snapshot contains no usable public profile or repository fields.');
-  const citations = sources.filter((source) => citedIds.has(source.id)).slice(0, 8);
-  const providerCode = String(providerStatus.code || 'AI_UNAVAILABLE');
+  if (!facts.length) facts.push('The collected snapshot does not contain usable public profile or repository details.');
+  const citations = sources.filter((source) => citedIds.has(source.id)).slice(0, 4);
+  const factSummary = facts.slice(0, 4).join(' ');
   return {
-    answer: 'The model voices have fallen silent, but the archive is not empty. I cannot honestly infer the exact answer to "' +
-      String(question || '').slice(0, MAX_ACCOUNT_QUESTION_CHARS) + '" from this snapshot alone. Here is what I can place on the table about ' +
-      handle + ':\n\n' + facts.map((fact) => '- ' + fact).join('\n') +
-      '\n\nThe missing answer is not a secret I can invent. The evidence-only fallback is active because the inference path returned ' +
-      providerCode + '. Ask again when the model path returns, or question one of these traces directly. The darkness keeps what the record never revealed.',
+    answer: 'The archive cannot verify a direct answer to "' +
+      String(question || '').slice(0, MAX_ACCOUNT_QUESTION_CHARS) +
+      '". The public snapshot does confirm this about ' + handle + ': ' + factSummary +
+      ' I will not guess beyond these traces.',
     citations,
     uncertainty: [
-      'The AI inference path was unavailable (' + providerCode + '), so this is a verified snapshot fallback rather than a semantic answer to every part of the question.',
-      'Counts and language breakdowns refer to the returned public repository sample and may be incomplete when GitHub caps the list.',
+      'A source-checked direct answer was unavailable, so this response is limited to the collected public profile and repository metadata.',
+      'The repository sample may be incomplete if GitHub capped the list returned for this investigation.',
     ],
-    status: { code: 'EVIDENCE_FALLBACK', message: 'The model path fell silent; RepoGhost returned only facts available in the public snapshot.' },
+    status: { code: 'EVIDENCE_FALLBACK', message: 'A source-checked answer was unavailable; only facts from the public snapshot are shown.' },
     model: null,
   };
 }
@@ -779,7 +768,7 @@ const ACCOUNT_QUESTION_SYSTEM_PROMPT = 'You are RepoGhost, the ghost behind the 
   '- If the evidence does not answer the question, say what is missing. Never invent facts, commits, motives, identities, or private information.\n' +
   '- If the repository list is capped, describe counts and language breakdowns as applying only to the returned sample.\n' +
   '- In plain-text recovery mode, keep the exact Sources: id, id citation line as the final line.\n' +
-  'Return only one JSON object matching the requested schema.';
+  '- Follow the response format specified by the current request; when it explicitly asks for plain-text recovery mode, answer in natural language rather than JSON.\n';
 
 function answerAccountPurposeQuestion(evidence, question) {
   const text = String(question || '').trim();
