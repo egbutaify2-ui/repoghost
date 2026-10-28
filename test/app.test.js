@@ -460,6 +460,38 @@ test('caches successful public GitHub GET responses for repeat lookups', async (
   assert.equal(calls, 1);
 });
 
+test('does not retry a missing optional GitHub resource anonymously', async () => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = 'test-token-for-optional-404';
+  try {
+    const requests = [];
+    const fetchImpl = async (input, options = {}) => {
+      requests.push({
+        url: String(input),
+        authenticated: Boolean(options.headers && options.headers.Authorization),
+      });
+      return responseJson({ message: 'Not Found' }, 404, {
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-remaining': '4999',
+      });
+    };
+
+    const response = await require('../server').fetchGithubResponse(
+      fetchImpl,
+      'https://api.github.test/repos/acme/engine/releases/latest',
+      { headers: githubHeaders(), optional: true },
+    );
+    assert.equal(response.status, 404);
+    assert.deepEqual(requests, [{
+      url: 'https://api.github.test/repos/acme/engine/releases/latest',
+      authenticated: true,
+    }], 'optional 404s should not trigger a second anonymous request');
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+  }
+});
+
 test('reports actual GitHub REST rate limit tier from response headers', () => {
   assert.throws(() => rateLimitMessage(responseJson({}, 403, {
     'x-ratelimit-remaining': '0',
