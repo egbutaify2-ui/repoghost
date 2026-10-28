@@ -744,17 +744,23 @@ test('handles thank-you, greetings, acknowledgements, and help without invoking 
   assert.match(thanks.answer, /archive/i);
   const combinedThanks = answerSimpleAccountConversation('okay thank you', 'acme');
   assert.equal(combinedThanks.status.code, 'CONVERSATION');
-  assert.match(combinedThanks.answer, /shadows/i);
+  assert.match(combinedThanks.answer, /open/i);
   const welcomeCorrection = answerSimpleAccountConversation('you cant say you are wlcm or something?', 'acme');
   assert.equal(welcomeCorrection.status.code, 'CONVERSATION');
-  assert.match(welcomeCorrection.answer, /deserved/i);
+  assert.match(welcomeCorrection.answer, /manners/i);
   assert.match(welcomeCorrection.answer, /welcome/i);
   assert.deepEqual(thanks.citations, []);
   assert.equal(answerSimpleAccountConversation('hello', 'acme').status.code, 'CONVERSATION');
+  const scared = answerSimpleAccountConversation('im scared', 'acme');
+  assert.equal(scared.status.code, 'CONVERSATION');
+  assert.match(scared.answer, /one candle burning/i);
+  assert.match(scared.answer, /@acme/);
+  assert.doesNotMatch(scared.answer, /hiring|suitability/i);
+  assert.ok(scared.answer.split(/\\s+/).length < 35, 'short fear messages must receive short replies');
   assert.match(answerSimpleAccountConversation('what can you do', 'acme').answer, /public repositories/i);
   const records = answerSimpleAccountConversation('what records then?', 'acme');
-  assert.match(records.answer, /public traces GitHub leaves exposed/i);
-  assert.match(records.answer, /README passages, sampled commits, open issues, and releases/i);
+  assert.match(records.answer, /public profile, repositories, languages, stars, forks/i);
+  assert.match(records.answer, /README files, sampled commits, issues, and releases/i);
   assert.match(records.answer, /private repositories/i);
   assert.equal(answerSimpleAccountConversation('How many stars does this account have?', 'acme'), null);
 });
@@ -811,6 +817,8 @@ test('answers account questions through the configured open-weight model with a 
   assert.match(requestBody.messages[0].content, /"sourceIds"/);
   assert.match(requestBody.messages[0].content, /haunted investigator/i);
   assert.match(requestBody.messages[0].content, /MANDATORY GHOST VOICE/i);
+  assert.match(requestBody.messages[0].content, /under 70 words/i);
+  assert.match(requestBody.messages[0].content, /unless the user explicitly asks about hiring/i);
   assert.deepEqual(requestBody.models, [DEFAULT_MODEL, 'openrouter/free']);
   assert.match(requestBody.messages[1].content, /repo-1/);
   assert.equal(result.answer, 'The returned repository is written in TypeScript.');
@@ -961,7 +969,7 @@ test('routes natural thanks, welcome corrections, and spooky banter before GitHu
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
-  for (const question of ['thank you', 'okay thank you', 'you cant say you are wlcm or something?', 'im scared of you ghost', 'what records then?']) {
+  for (const question of ['thank you', 'okay thank you', 'you cant say you are wlcm or something?', 'im scared', 'im scared of you ghost', 'imagine?', 'what records then?']) {
     const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -974,13 +982,13 @@ test('routes natural thanks, welcome corrections, and spooky banter before GitHu
       assert.match(body.answer, /@acme/);
       assert.match(body.answer, /public trail/i);
     } else if (/records then/i.test(question)) {
-      assert.match(body.answer, /public traces GitHub leaves exposed/i);
+      assert.match(body.answer, /public profile, repositories, languages/i);
       assert.match(body.answer, /sampled commits/i);
-      assert.match(body.answer, /darkness/i);
+      assert.match(body.answer, /veil/i);
     } else if (/cant say/i.test(question)) {
-      assert.match(body.answer, /deserved/i);
+      assert.match(body.answer, /manners/i);
     } else {
-      assert.match(body.answer, /archive/i);
+      assert.match(body.answer, /archive|whisper/i);
     }
     assert.equal(body.status.code, 'CONVERSATION');
     assert.deepEqual(body.citations, []);
