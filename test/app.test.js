@@ -1070,7 +1070,7 @@ test('serves username-only GitHub search with repository evidence and account ch
   assert.match(page, /id="intel-compare-form"/);
   assert.match(page, /id="intel-health-form"/);
   assert.match(page, /id="intel-recommend-form"/);
-  assert.match(page, /QUESTION THE TRACES/);
+  assert.match(page, /THE INTERROGATION ROOM/);
   assert.ok(page.includes('Built by <strong>Egbuta Ifeanyi Chukwu</strong>'));
   assert.ok(page.includes('href="https://dev.to/egbutaify2ui"'));
   assert.ok(page.includes('href="https://github.com/egbutaify2-ui"'));
