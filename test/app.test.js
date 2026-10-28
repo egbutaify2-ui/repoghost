@@ -913,7 +913,7 @@ test('does not fabricate account answers when AI is not configured', async () =>
   assert.equal(result.status.code, 'AI_NOT_CONFIGURED');
 });
 
-test('routes natural thanks and welcome corrections before GitHub evidence or model calls', async (t) => {
+test('routes natural thanks, welcome corrections, and spooky banter before GitHub evidence or model calls', async (t) => {
   let discoveryCalls = 0;
   let evidenceCalls = 0;
   let modelCalls = 0;
@@ -925,7 +925,7 @@ test('routes natural thanks and welcome corrections before GitHub evidence or mo
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
-  for (const question of ['thank you', 'okay thank you', 'you cant say you are wlcm or something?']) {
+  for (const question of ['thank you', 'okay thank you', 'you cant say you are wlcm or something?', 'im scared of you ghost']) {
     const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -933,7 +933,13 @@ test('routes natural thanks and welcome corrections before GitHub evidence or mo
     });
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert.match(body.answer, /welcome/i);
+    if (/scared/i.test(question)) {
+      assert.match(body.answer, /one candle burning/i);
+      assert.match(body.answer, /@acme/);
+      assert.match(body.answer, /public trail/i);
+    } else {
+      assert.match(body.answer, /welcome/i);
+    }
     assert.equal(body.status.code, 'CONVERSATION');
     assert.deepEqual(body.citations, []);
   }
