@@ -652,6 +652,43 @@ function accountDiscoveryFixture() {
   };
 }
 
+function expressOrganizationDiscoveryFixture() {
+  const discovery = accountDiscoveryFixture();
+  discovery.account.login = 'expressjs';
+  discovery.account.type = 'Organization';
+  discovery.account.name = 'Express';
+  discovery.account.bio = '';
+  discovery.account.url = 'https://github.com/expressjs';
+  discovery.account.publicRepos = 12;
+  discovery.repositories = [
+    {
+      id: 901, name: 'express', fullName: 'expressjs/express', url: 'https://github.com/expressjs/express',
+      description: 'Fast, unopinionated, minimalist web framework for Node.js', language: 'JavaScript',
+      stars: 70000, forks: 20000, openIssuesCount: 0, pushedAt: '2026-10-20T12:00:00Z',
+      updatedAt: '2026-10-20T12:00:00Z', createdAt: '2010-01-01T00:00:00Z', archived: false, fork: false,
+      defaultBranch: 'master', license: 'MIT License',
+    },
+    {
+      id: 902, name: 'multer', fullName: 'expressjs/multer', url: 'https://github.com/expressjs/multer',
+      description: 'Node.js middleware for handling multipart/form-data file uploads', language: 'JavaScript',
+      stars: 11000, forks: 1000, openIssuesCount: 4, pushedAt: '2026-10-19T12:00:00Z',
+      updatedAt: '2026-10-19T12:00:00Z', createdAt: '2014-01-01T00:00:00Z', archived: false, fork: false,
+      defaultBranch: 'main', license: 'MIT License',
+    },
+    {
+      id: 903, name: 'morgan', fullName: 'expressjs/morgan', url: 'https://github.com/expressjs/morgan',
+      description: 'HTTP request logger middleware for Node.js', language: 'JavaScript',
+      stars: 8000, forks: 500, openIssuesCount: 3, pushedAt: '2026-10-18T12:00:00Z',
+      updatedAt: '2026-10-18T12:00:00Z', createdAt: '2013-01-01T00:00:00Z', archived: false, fork: false,
+      defaultBranch: 'master', license: 'MIT License',
+    },
+  ];
+  discovery.returnedCount = 3;
+  discovery.limitReached = false;
+  return discovery;
+}
+
+
 test('builds account evidence summaries with bounded repository statistics and sources', () => {
   const evidence = buildAccountQuestionSummary(accountDiscoveryFixture());
   assert.equal(evidence.account.login, 'acme');
@@ -946,9 +983,60 @@ test('falls back to cited plain text when JSON mode fails', async () => {
   assert.match(result.answer, /TypeScript parsing engine/);
   assert.equal(result.citations[0].url, 'https://github.com/acme/engine');
 });
+test('answers organization-purpose questions from public repository descriptions without invoking AI', async () => {
+  const evidence = buildAccountQuestionSummary(expressOrganizationDiscoveryFixture());
+  let modelCalled = false;
+  const result = await answerAccountQuestion(evidence, 'what does this ID do? what job does expressjs do?', {
+    env: {},
+    fetchImpl: async () => { modelCalled = true; throw new Error('purpose answers should not need a model'); },
+  });
+  assert.equal(modelCalled, false);
+  assert.equal(result.status.code, 'EVIDENCE_READY');
+  assert.match(result.answer, /expressjs\/express/i);
+  assert.match(result.answer, /web framework for Node\.js/i);
+  assert.match(result.answer, /expressjs\/multer/i);
+  assert.match(result.answer, /Node\.js software/i);
+  assert.ok(result.citations.some((source) => source.url === 'https://github.com/expressjs/express'));
+  assert.ok(result.citations.some((source) => source.url === 'https://github.com/expressjs/multer'));
+  assert.match(result.uncertainty[0], /inferred from public repository descriptions/i);
+});
+
+test('serves organization-purpose answers before the AI fallback path', async (t) => {
+  const discovery = expressOrganizationDiscoveryFixture();
+  let evidenceCalls = 0;
+  let modelCalls = 0;
+  const server = createServer({
+    logger: { error() {} },
+    discoverRepositories: async () => discovery,
+    collectAccountQuestionEvidence: async (value) => {
+      evidenceCalls += 1;
+      return buildAccountQuestionSummary(value);
+    },
+    answerAccountQuestion: async () => {
+      modelCalls += 1;
+      return { answer: null, citations: [], uncertainty: [], status: { code: 'AI_INVALID_OUTPUT' } };
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/account/ask', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'expressjs', question: 'what does this ID do? what job does expressjs do?' }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.status.code, 'EVIDENCE_READY');
+  assert.match(body.answer, /web framework for Node\.js/i);
+  assert.match(body.answer, /expressjs\/multer/i);
+  assert.ok(body.citations.some((source) => source.url === 'https://github.com/expressjs/express'));
+  assert.equal(evidenceCalls, 0, 'the purpose answer should use the already available repository metadata');
+  assert.equal(modelCalls, 0, 'the purpose answer must not reach the unreliable model path');
+});
+
 test('does not fabricate account answers when AI is not configured', async () => {
   let called = false;
-  const result = await answerAccountQuestion(buildAccountQuestionSummary(accountDiscoveryFixture()), 'What does the account work on?', {
+  const result = await answerAccountQuestion(buildAccountQuestionSummary(accountDiscoveryFixture()), 'Can public GitHub records establish this account owner’s private motivations?', {
     env: {},
     fetchImpl: async () => { called = true; throw new Error('must not call provider'); },
   });

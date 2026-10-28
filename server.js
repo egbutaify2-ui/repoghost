@@ -780,6 +780,95 @@ const ACCOUNT_QUESTION_SYSTEM_PROMPT = 'You are RepoGhost, the ghost behind the 
   '- If the repository list is capped, describe counts and language breakdowns as applying only to the returned sample.\n' +
   '- In plain-text recovery mode, keep the exact Sources: id, id citation line as the final line.\n' +
   'Return only one JSON object matching the requested schema.';
+
+function answerAccountPurposeQuestion(evidence, question) {
+  const text = String(question || '').trim();
+  const asksPurpose =
+    /\bwhat\s+does\s+(?:(?:this|that|the)\s+)?(?:id|account|profile|org(?:anization)?|company|username|handle)\s+do\b/i.test(text) ||
+    /\bwhat\s+does\s+@?[\w.-]+\s+do\b/i.test(text) ||
+    /\bwhat\s+(?:job|work|purpose|role|mission)\s+does\s+(?:@?[\w.-]+|this|that|the)\s+(?:do|build|maintain|make|provide|develop|work on)\b/i.test(text) ||
+    /\bwhat\s+(?:is|are)\s+(?:the\s+)?(?:purpose|role|job|mission)\s+of\s+(?:@?[\w.-]+|this|that|the)\b/i.test(text);
+  if (!asksPurpose) return null;
+
+  const account = evidence && evidence.account ? evidence.account : {};
+  const repositories = Array.isArray(evidence && evidence.repositories) ? evidence.repositories : [];
+  const sources = Array.isArray(evidence && evidence.sources) ? evidence.sources : [];
+  const sourceById = new Map(sources.map((source) => [source.id, source]));
+  const cited = new Map();
+  const login = typeof account.login === 'string' && account.login.trim() ? account.login.trim() : 'this account';
+  const handle = '@' + login;
+  const isOrganization = String(account.type || '').toLowerCase() === 'organization';
+  const describedRepositories = repositories
+    .filter((repository) => typeof repository.description === 'string' && repository.description.trim())
+    .sort((left, right) => Number(right.stars || 0) - Number(left.stars || 0))
+    .slice(0, 3);
+  const addCitation = (id) => {
+    if (id && sourceById.has(id)) cited.set(id, sourceById.get(id));
+  };
+  addCitation('account-profile');
+
+  const parts = [
+    'The public record identifies ' + handle + ' as ' + (isOrganization ? 'a GitHub organization.' : 'a GitHub account.'),
+  ];
+  const bio = typeof account.bio === 'string' ? account.bio.trim().replace(/\s+/g, ' ').slice(0, 180) : '';
+  if (bio) parts.push('Its public profile says: “' + bio + '”.');
+
+  if (describedRepositories.length) {
+    const main = describedRepositories[0];
+    const mainDescription = main.description.trim().replace(/\s+/g, ' ').slice(0, 180);
+    parts.push('Its leading described project is ' + main.fullName + ': “' + mainDescription + '”.');
+    addCitation(main.sourceId);
+
+    const related = describedRepositories.slice(1, 3);
+    if (related.length) {
+      parts.push('Related public projects include ' + related.map((repository) => {
+        addCitation(repository.sourceId);
+        return repository.fullName + ' (“' + repository.description.trim().replace(/\s+/g, ' ').slice(0, 100) + '”)';
+      }).join('; ') + '.');
+    }
+
+    const descriptionText = describedRepositories.map((repository) => repository.description).join(' ');
+    const ecosystem = [
+      ['Node.js', /\bnode(?:\.js)?\b/i],
+      ['JavaScript', /\bjavascript\b/i],
+      ['TypeScript', /\btypescript\b/i],
+      ['Python', /\bpython\b/i],
+      ['Rust', /\brust\b/i],
+      ['Go', /\bgolang\b|\bgo language\b/i],
+      ['Java', /\bjava\b/i],
+      ['Ruby', /\bruby\b/i],
+      ['PHP', /\bphp\b/i],
+    ].find(([, pattern]) => pattern.test(descriptionText));
+    if (ecosystem) {
+      parts.push('Taken together, these descriptions point to ' + ecosystem[0] + ' software and related developer tools.');
+    } else {
+      parts.push('Taken together, the descriptions point to work centered on these public projects.');
+    }
+  } else {
+    const firstRepository = repositories[0];
+    if (firstRepository) {
+      addCitation(firstRepository.sourceId);
+      parts.push('The snapshot lists ' + firstRepository.fullName + ', but it does not include a usable project description to explain its purpose.');
+    } else {
+      parts.push('The collected public snapshot does not contain enough profile or project detail to establish what this account does.');
+    }
+  }
+
+  if (!cited.size && sources.length) addCitation(sources[0].id);
+  if (!cited.size) return null;
+  return {
+    answer: parts.join(' '),
+    citations: [...cited.values()].slice(0, 4),
+    uncertainty: [
+      describedRepositories.length
+        ? 'Purpose is inferred from public repository descriptions; the snapshot is not an official mission statement.'
+        : 'The collected public profile and repository metadata do not directly establish the account’s purpose.',
+    ],
+    status: { code: 'EVIDENCE_READY', message: 'Answered from public profile and repository descriptions.' },
+    model: null,
+  };
+}
+
 function answerAccountMetricQuestion(evidence, question) {
   const asksStars = /\b(stars?|stargazers?)\b/i.test(question);
   const asksContributors = /\bcontributors?\b/i.test(question);
@@ -1038,6 +1127,8 @@ async function answerAccountQuestion(evidence, question, options = {}) {
   if (forkAnswer) return forkAnswer;
   const directMetrics = answerAccountMetricQuestion(evidence, question);
   if (directMetrics) return directMetrics;
+  const directPurpose = answerAccountPurposeQuestion(evidence, question);
+  if (directPurpose) return directPurpose;
 
   const env = options.env || process.env;
   const apiKey = env.OPENROUTER_API_KEY;
@@ -1834,7 +1925,8 @@ function createServer(dependencies = {}) {
         const quickForkAnswer = answerAccountForkQuestion(basicEvidence, question);
         const quickHiringAnswer = answerAccountHiringQuestion(basicEvidence, question, body.history);
         const quickMetricAnswer = /\bcontributors?\b/i.test(question) ? null : answerAccountMetricQuestion(basicEvidence, question);
-        const quickAnswer = quickForkAnswer || quickHiringAnswer || quickMetricAnswer;
+        const quickPurposeAnswer = answerAccountPurposeQuestion(basicEvidence, question);
+        const quickAnswer = quickForkAnswer || quickHiringAnswer || quickMetricAnswer || quickPurposeAnswer;
         if (quickAnswer) {
           return sendJson(res, 200, {
             account: context.discovery.account,
@@ -2023,6 +2115,7 @@ module.exports = {
   SYSTEM_PROMPT,
   analyzeEvidence,
   answerAccountQuestion,
+  answerAccountPurposeQuestion,
   answerAccountHiringQuestion,
   answerSimpleAccountConversation,
   answerAccountForkQuestion,
