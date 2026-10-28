@@ -414,13 +414,15 @@ function hauntAccountAnswer(answer, username, question = '') {
   }
 
   const firstLineIsHaunted = /^(?:the candle|something stirs|a whisper|the archive|the screen darkens|then keep one candle|listen closely|from the dark|from behind the glass|the records stir|ah, the living|the ghost|through the veil|beneath the veil)\\b/i.test(output);
-  const lastLine = output.split('\\n').pop() || '';
-  const hasHauntedEnding = /(?:darkness keeps its secrets|the rest stays in the dark|the rest remains buried|public record ends|public trail ends here|that is all the shadows reveal|no record, no claim|what github hides|ghost has no sight|stays in the dark|mind behind it|what github never revealed)/i.test(lastLine);
+  let lastLine = output.split('\\n').pop() || '';
+  let hasHauntedEnding = /(?:darkness keeps its secrets|the rest stays in the dark|the rest remains buried|public record ends|public trail ends here|that is all the shadows reveal|no record, no claim|what github hides|ghost has no sight|stays in the dark|mind behind it|what github never revealed)/i.test(lastLine);
   const detailsRequested = /\\b(?:in detail|detailed|comprehensive|deep dive|step[- ]by[- ]step|full analysis|thoroughly|go deeper)\\b/i.test(question);
   const maxWords = detailsRequested ? 140 : 75;
-  const framingWords = (firstLineIsHaunted ? 0 : 4) + (hasHauntedEnding ? 0 : 7);
+  const framingWords = (firstLineIsHaunted ? 0 : 4) + 7;
   const words = output.split(/\\s+/).filter(Boolean);
+  let wasClipped = false;
   if (words.length > Math.max(25, maxWords - framingWords)) {
+    wasClipped = true;
     const limit = Math.max(25, maxWords - framingWords);
     const clipped = words.slice(0, limit).join(' ');
     const sentenceEnds = [...clipped.matchAll(/[.!?](?=\\s|$)/g)];
@@ -428,6 +430,8 @@ function hauntAccountAnswer(answer, username, question = '') {
     output = lastComplete > clipped.length * 0.55
       ? clipped.slice(0, lastComplete + 1)
       : clipped.replace(/[,:;—-]+$/, '') + '…';
+    lastLine = output.split('\\n').pop() || '';
+    hasHauntedEnding = /(?:darkness keeps its secrets|the rest stays in the dark|the rest remains buried|public record ends|public trail ends here|that is all the shadows reveal|no record, no claim|what github hides|ghost has no sight|stays in the dark|mind behind it|what github never revealed)/i.test(lastLine);
   }
   if (!firstLineIsHaunted) output = intros[(seed >>> 0) % intros.length] + '\\n\\n' + output;
   if (!hasHauntedEnding) output += '\\n\\n' + endings[((seed >>> 3) >>> 0) % endings.length];
