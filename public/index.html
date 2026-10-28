@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0d12">
-  <meta name="description" content="Investigate public GitHub developers and repositories. Assess role-relevant project evidence, compare accounts, inspect project health, and discover useful projects with source-linked findings.">
-  <title>RepoGhost — GitHub Developer &amp; Repository Intelligence</title>
-  <meta property="og:title" content="RepoGhost — GitHub Developer &amp; Repository Intelligence">
-  <meta property="og:description" content="Assess public developer portfolios, compare GitHub accounts, investigate repository health, and find relevant projects. Evidence first. Read-only by design.">
+  <meta name="description" content="Every GitHub profile leaves a ghost. Summon a public GitHub account, question its trail of projects, commits, technologies, and activity, and uncover what the evidence reveals.">
+  <title>RepoGhost — Every GitHub Profile Leaves a Ghost</title>
+  <meta property="og:title" content="RepoGhost — Every GitHub Profile Leaves a Ghost">
+  <meta property="og:description" content="Summon it. Ask anything. Uncover the traces. Question a developer’s public GitHub trail and follow the evidence wherever it leads.">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="/ghost.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
@@ -20,10 +20,10 @@
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 40 40" fill="none"><path d="M8 31.5V18.8C8 11.9 13.3 6.5 20 6.5s12 5.4 12 12.3v12.7l-5.1-3.4-3.5 3.4-3.4-3.4-3.5 3.4L12.9 28 8 31.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="15.5" cy="18.5" r="1.4" fill="currentColor"/><circle cx="24.5" cy="18.5" r="1.4" fill="currentColor"/><path d="M16.5 23.5c2.1 1.8 4.9 1.8 7 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </span>
-        <span class="brand-copy"><strong>RepoGhost</strong><small>DEVELOPER + REPOSITORY INTELLIGENCE</small></span>
+        <span class="brand-copy"><strong>RepoGhost</strong><small>PUBLIC TRAILS / HIDDEN PATTERNS</small></span>
       </a>
       <div class="topbar-right">
-        <span class="quiet-status"><span class="status-dot"></span> READ-ONLY INVESTIGATION</span>
+        <span class="quiet-status"><span class="status-dot"></span> THE GHOST KNOWS THE PUBLIC TRAIL</span>
         <a class="text-link" href="#method">How it works <span aria-hidden="true">↗</span></a>
       </div>
     </header>
@@ -32,12 +32,12 @@
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
           <div class="eyebrow"><span class="eyebrow-line"></span> FIELD NOTES / 001 <span class="eyebrow-muted">· THE GHOST IN THE MACHINE</span></div>
-          <h1 id="hero-title">Investigate public profiles.<br>Understand <span class="headline-accent">projects.</span></h1>
-          <p class="hero-description">RepoGhost turns public GitHub profiles and repository activity into useful, source-linked insight. Explore role-relevant project signals, compare two accounts, inspect repository health, and discover projects worth exploring—with clear limits on what public metadata can tell you.</p>
+          <h1 id="hero-title">Every GitHub profile<br>leaves a <span class="headline-accent">ghost.</span></h1>
+          <p class="hero-description"><strong>Summon it. Ask anything. Uncover the traces.</strong> RepoGhost follows a developer’s public GitHub trail through repositories, commits, technologies, and issues. Question what the evidence reveals, uncover forgotten projects, and keep digging when the trail turns cold. The ghost can only speak from public evidence—not private lives or secrets.</p>
           <div class="proof-row">
-            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Source-linked findings</span>
-            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Facts ≠ hypotheses</span>
-            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> No code execution</span>
+            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Evidence has a source</span>
+            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Silence is not proof</span>
+            <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Nothing gets executed</span>
           </div>
         </div>
         <div class="ghost-art" aria-hidden="true">
@@ -52,39 +52,39 @@
             <path d="M26 119h20M181 87h29M177 190h34M20 203h19" stroke="#7892ad" stroke-opacity=".6" stroke-linecap="round"/>
             <defs><linearGradient id="ghostFill" x1="66" y1="34" x2="179" y2="242" gradientUnits="userSpaceOnUse"><stop stop-color="#17212d"/><stop offset="1" stop-color="#0d1119"/></linearGradient></defs>
           </svg>
-          <div class="art-caption"><span class="art-caption-dot"></span> EVIDENCE BEFORE CONCLUSIONS.</div>
-          <div class="art-coordinate">40°43' N<br>GITHUB / PUBLIC SIGNALS</div>
+          <div class="art-caption"><span class="art-caption-dot"></span> THE TRAIL NEVER TELLS THE WHOLE STORY.</div>
+          <div class="art-coordinate">CASE FILE / 001<br>PUBLIC TRACES / OPEN SOURCE</div>
         </div>
       </section>
 
       <section class="investigate-panel" aria-labelledby="investigate-heading">
         <div class="panel-heading">
-          <div><span class="section-index">01 / ACCOUNT SEARCH</span><h2 id="investigate-heading">Search GitHub by username</h2></div>
-          <span class="panel-code">PUBLIC ACCOUNTS / READ ONLY</span>
+          <div><span class="section-index">01 / SUMMONING RITUAL</span><h2 id="investigate-heading">Summon a public GitHub account</h2></div>
+          <span class="panel-code">PUBLIC TRAILS / READ ONLY</span>
         </div>
         <form id="investigate-form" novalidate>
           <label class="sr-only" for="github-username">GitHub username or organization</label>
           <div class="input-wrap">
             <span class="input-prefix" aria-hidden="true">@</span>
             <input id="github-username" name="username" type="text" placeholder="Enter a GitHub username or org, e.g. expressjs" autocomplete="off" spellcheck="false" required aria-describedby="url-help" maxlength="2048">
-            <button id="investigate-button" type="submit"><span>Search GitHub</span><span class="button-arrow" aria-hidden="true">↗</span></button>
+            <button id="investigate-button" type="submit"><span>Summon the ghost</span><span class="button-arrow" aria-hidden="true">↗</span></button>
           </div>
-          <div class="input-meta"><p id="url-help">Search a public GitHub username or organization to browse repositories and ask evidence-backed questions. Then use the tools below to assess a role, compare accounts, investigate project health, or find a relevant project.</p><p class="keyboard-hint">READ-ONLY <span>·</span> PUBLIC REPOS <span>·</span> CITATIONS FIRST</p></div>
+          <div class="input-meta"><p id="url-help">Enter a username or organization, summon its public trail, then question the ghost about its projects, technologies, and activity. Follow the evidence into deeper investigations.</p><p class="keyboard-hint">PUBLIC RECORD <span>·</span> SOURCE-LINKED <span>·</span> EVIDENCE FIRST</p></div>
           <p id="form-error" class="form-error" role="alert" hidden></p>
         </form>
         <div class="examples-row" id="examples-row">
-          <span class="examples-label">QUICK LOOK</span>
+          <span class="examples-label">KNOWN SIGHTINGS</span>
           <button type="button" class="example-repo" data-username="expressjs">@expressjs <span>↗</span></button>
           <button type="button" class="example-repo" data-username="nodejs">@nodejs <span>↗</span></button>
           <button type="button" class="example-repo" data-username="octocat">@octocat <span>↗</span></button>
-          <span class="examples-note">Start with an account, then assess, compare, revive, or discover.</span>
+          <span class="examples-note">Choose a trace. The questioning begins there.</span>
         </div>
       </section>
 
       <section id="intelligence-suite" class="intelligence-suite" aria-labelledby="intelligence-heading">
         <div class="panel-heading intelligence-suite-heading">
-          <div><span class="section-index">02 / DEVELOPER INTELLIGENCE</span><h2 id="intelligence-heading">Turn GitHub evidence into a next move</h2><p class="intelligence-intro">Assess a portfolio, compare two public accounts, investigate a project’s maintenance signals, or find a useful repository to explore. Every result stays read-only and source-linked.</p></div>
-          <span class="panel-code">FOUR WORKFLOWS / PUBLIC EVIDENCE</span>
+          <div><span class="section-index">02 / QUESTION THE TRACES</span><h2 id="intelligence-heading">Ask the trail what it remembers</h2><p class="intelligence-intro">Interrogate a public portfolio, compare two traces, investigate what may be hiding in a quiet repository, or find your next contribution. The evidence is public; the conclusions stay cautious.</p></div>
+          <span class="panel-code">FOUR RITUALS / PUBLIC EVIDENCE</span>
         </div>
         <div class="intelligence-tabs" role="tablist" aria-label="Developer intelligence tools">
           <button type="button" class="intelligence-tab is-active" id="tab-assess" role="tab" aria-selected="true" aria-controls="panel-assess" data-intel-tab="assess">Developer assessment</button>
@@ -94,7 +94,7 @@
         </div>
 
         <section class="intelligence-workflow" id="panel-assess" role="tabpanel" aria-labelledby="tab-assess" data-intel-panel="assess">
-          <div class="intelligence-workflow-copy"><span class="card-kicker">A / PORTFOLIO REVIEW</span><h3>Assess a developer for a specific role</h3><p>Find relevant public projects, technology signals, evidence gaps, and role-specific interview questions. This is a screening aid, not a hiring verdict.</p></div>
+          <div class="intelligence-workflow-copy"><span class="card-kicker">A / PORTFOLIO REVIEW</span><h3>Interrogate a developer’s public trail</h3><p>Find relevant public projects, technology signals, evidence gaps, and role-specific interview questions. This is a screening aid, not a hiring verdict.</p></div>
           <form id="intel-assess-form" class="intelligence-form">
             <div class="intelligence-fields two-col">
               <label>GitHub username or profile URL<input name="username" type="text" maxlength="2048" placeholder="e.g. octocat" autocomplete="off" required></label>
@@ -107,7 +107,7 @@
         </section>
 
         <section class="intelligence-workflow" id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" data-intel-panel="compare" hidden>
-          <div class="intelligence-workflow-copy"><span class="card-kicker">B / SIDE-BY-SIDE REVIEW</span><h3>Compare two GitHub accounts</h3><p>Compare role-relevant repositories, visible technology signals, and activity. The criteria are explicit; repository totals are not treated as engineering quality.</p></div>
+          <div class="intelligence-workflow-copy"><span class="card-kicker">B / SIDE-BY-SIDE REVIEW</span><h3>Compare two public traces</h3><p>Compare role-relevant repositories, visible technology signals, and activity. The criteria are explicit; repository totals are not treated as engineering quality.</p></div>
           <form id="intel-compare-form" class="intelligence-form">
             <div class="intelligence-fields two-col">
               <label>First GitHub username<input name="usernameA" type="text" maxlength="2048" placeholder="e.g. octocat" autocomplete="off" required></label>
@@ -120,7 +120,7 @@
         </section>
 
         <section class="intelligence-workflow" id="panel-health" role="tabpanel" aria-labelledby="tab-health" data-intel-panel="health" hidden>
-          <div class="intelligence-workflow-copy"><span class="card-kicker">C / REPOSITORY RESURRECTION</span><h3>Find what may need attention</h3><p>Inspect bounded public evidence for activity, open-issue patterns, documentation signals, and practical contribution steps. Inactivity alone is not proof that a project is abandoned.</p></div>
+          <div class="intelligence-workflow-copy"><span class="card-kicker">C / REPOSITORY RESURRECTION</span><h3>Find what the silence is hiding</h3><p>Inspect bounded public evidence for activity, open-issue patterns, documentation signals, and practical contribution steps. Inactivity alone is not proof that a project is abandoned.</p></div>
           <form id="intel-health-form" class="intelligence-form">
             <div class="intelligence-fields">
               <label>Public GitHub repository URL<input name="repositoryUrl" type="url" inputmode="url" maxlength="2048" placeholder="https://github.com/owner/repository" required></label>
@@ -131,7 +131,7 @@
         </section>
 
         <section class="intelligence-workflow" id="panel-recommend" role="tabpanel" aria-labelledby="tab-recommend" data-intel-panel="recommend" hidden>
-          <div class="intelligence-workflow-copy"><span class="card-kicker">D / DISCOVERY & NEXT ACTIONS</span><h3>Choose a project worth exploring</h3><p>Match public repositories to a use case, inspect available licenses and contributor signals, and get practical next steps without automatically writing to GitHub.</p></div>
+          <div class="intelligence-workflow-copy"><span class="card-kicker">D / DISCOVERY & NEXT ACTIONS</span><h3>Follow the trail to your next contribution</h3><p>Follow project traces toward a use case, inspect licenses and contributor signals, and uncover practical next steps without writing to GitHub.</p></div>
           <form id="intel-recommend-form" class="intelligence-form">
             <div class="intelligence-fields two-col">
               <label>GitHub username or organization<input name="username" type="text" maxlength="2048" placeholder="e.g. expressjs" autocomplete="off" required></label>
@@ -152,19 +152,19 @@
       </section>
 
       <section id="method" class="method-section">
-        <div class="method-heading"><span class="section-index">04 / HOW IT WORKS</span><h2>Useful decisions.<br><span>Traceable evidence.</span></h2></div>
+        <div class="method-heading"><span class="section-index">04 / BEHIND THE VEIL</span><h2>Follow the traces.<br><span>Question every answer.</span></h2></div>
         <div class="method-grid">
-          <article class="method-card"><span class="method-number">A</span><h3>Collect public signals</h3><p>RepoGhost reads public profile and repository metadata, plus bounded samples of README text, commits, issues, and releases when available. Missing or sampled data is called out.</p><span class="method-tag">GITHUB REST API</span></article>
-          <article class="method-card"><span class="method-number">B</span><h3>Match the question</h3><p>Role assessments, account comparisons, project-health reports, and repository recommendations use explicit criteria. AI-powered analysis is kept separate, and repository text is treated as untrusted data.</p><span class="method-tag">ROLE + PROJECT CONTEXT</span></article>
-          <article class="method-card"><span class="method-number">C</span><h3>Help you choose the next move</h3><p>Findings link back to public GitHub sources and distinguish observations from recommendations. RepoGhost never pushes code, opens issues, forks projects, or executes repository code.</p><span class="method-tag">READ-ONLY BY DESIGN</span></article>
+          <article class="method-card"><span class="method-number">A</span><h3>Follow the public trail</h3><p>RepoGhost reads public profile and repository metadata, plus bounded samples of README text, commits, issues, and releases when available. Missing or sampled data is called out.</p><span class="method-tag">GITHUB REST API</span></article>
+          <article class="method-card"><span class="method-number">B</span><h3>Interrogate the evidence</h3><p>Role assessments, account comparisons, project-health reports, and repository recommendations use explicit criteria. AI-powered analysis is kept separate, and repository text is treated as untrusted data.</p><span class="method-tag">ROLE + PROJECT CONTEXT</span></article>
+          <article class="method-card"><span class="method-number">C</span><h3>Discover what comes next</h3><p>Findings link back to public GitHub sources and distinguish observations from recommendations. RepoGhost never pushes code, opens issues, forks projects, or executes repository code.</p><span class="method-tag">READ-ONLY BY DESIGN</span></article>
         </div>
       </section>
 
       <section class="principle-bar">
-        <div class="principle-icon" aria-hidden="true">✳</div><p><strong>Built for better technical decisions.</strong> RepoGhost helps developers, maintainers, contributors, and hiring teams explore public project evidence. It supports investigation—not certainty—and leaves every GitHub change in your hands.</p><span class="principle-stamp">KEEP THE PAST<br>USEFUL, NOT MYSTICAL.</span>
+        <div class="principle-icon" aria-hidden="true">✳</div><p><strong>The ghost is not magic. The evidence is real.</strong> RepoGhost helps developers, maintainers, contributors, and hiring teams question public project history. It offers investigation, not omniscience—and leaves every GitHub change in your hands.</p><span class="principle-stamp">WHEN THE TRAIL GOES COLD,<br>THE GHOST ADMITS IT.</span>
       </section>
     </main>
-    <footer class="footer"><a class="footer-brand" href="/">RepoGhost</a><span class="footer-credit">Built by <strong>Egbuta Ifeanyi Chukwu</strong> · <a href="https://dev.to/egbutaify2ui" target="_blank" rel="noopener noreferrer">DEV profile</a> · <a href="https://github.com/egbutaify2-ui" target="_blank" rel="noopener noreferrer">GitHub profile</a><small>Evidence over intuition. Every time.</small></span><span class="footer-right">BUILT FOR THE ONES WHO PICK UP THE THREAD.</span></footer>
+    <footer class="footer"><a class="footer-brand" href="/">RepoGhost</a><span class="footer-credit">Built by <strong>Egbuta Ifeanyi Chukwu</strong> · <a href="https://dev.to/egbutaify2ui" target="_blank" rel="noopener noreferrer">DEV profile</a> · <a href="https://github.com/egbutaify2-ui" target="_blank" rel="noopener noreferrer">GitHub profile</a><small>Every trace leaves a question.</small></span><span class="footer-right">BUILT FOR THOSE WHO FOLLOW THE GHOSTS.</span></footer>
   </div>
 </body>
 </html>
