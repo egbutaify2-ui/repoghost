@@ -1,88 +1,160 @@
 # RepoGhost
 
-**Evidence-backed intelligence for public GitHub developers and repositories.** RepoGhost helps people understand public developer portfolios, compare accounts against a role or use case, investigate repository health, and find relevant projects or contribution leads. Findings link back to GitHub sources, uncertainty stays visible, and recommendations never pretend to reveal private work or prove a person’s ability.
+<p align="center">
+  <strong>Every GitHub profile leaves a ghost.</strong><br />
+  <em>Summon it. Ask anything. Uncover the traces.</em>
+</p>
 
-> RepoGhost is read-only. It does not clone repositories, execute repository code, open user-supplied links from repository text, or change the repository it investigates.
+<p align="center">
+  <a href="https://repoghost.onrender.com"><strong>Summon RepoGhost →</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/egbutaify2-ui/repoghost">Inspect the source</a>
+</p>
 
-## Creator
+RepoGhost is an AI-powered investigation tool for public GitHub accounts and repositories. Enter a username, follow the trail through projects, commits, technologies, issues, and README files, then question the ghost about what the public record reveals.
 
-Built by **Egbuta Ifeanyi Chukwu**. Follow my work on the [DEV profile](https://dev.to/egbutaify2ui) or explore my projects on the [GitHub profile](https://github.com/egbutaify2-ui).
+What has this developer been building? Which technologies appear in their projects? What changed recently? Which repositories deserve a closer look? What evidence supports a possible match for a role? Where could someone contribute?
 
-## What it does
+Instead of stopping at a static profile summary, RepoGhost supports follow-up questions about an account's public work. Its answers link back to available evidence and expose gaps when the public trail can't answer a question.
 
-- **Investigates public GitHub accounts:** accepts usernames, `@handles`, or public profile URLs and lists returned public repositories for users and organizations.
-- **Answers account follow-ups:** supports evidence-backed natural-language questions about public repository metadata, language/activity summaries, and sampled recent commits. Greetings and acknowledgements are handled as conversation instead of being misrouted into research.
-- **Assesses developer evidence for a role:** connects a target role to relevant public repositories, observed technology signals, activity dates, evidence gaps, and interview questions. It is a screening aid—not a hiring verdict.
-- **Compares two GitHub accounts:** uses explicit role-relevance, visible technology signals, activity, and shared-signal criteria, keeping each account’s evidence and citations separate. When metadata has no direct match, it samples a small number of recent public repositories and checks their available READMEs before reporting an evidence gap. The comparison still shows repository counts, observed languages, and recent repository links when exact role matches are absent.
-- **Investigates repository health:** inspects a bounded sample of commits and open issues, the README excerpt, repository metadata, and the latest-release endpoint to identify maintenance signals and source-linked next steps.
-- **Recommends projects and contribution leads:** matches returned account repositories to a stated goal, highlights license cautions, and links to actual sampled issues where available.
-- **Preserves evidence and uncertainty:** distinguishes facts from hypotheses, never treats missing data as proof of missing skill, and does not call a quiet repository abandoned from activity alone.
-- **Stays read-only:** never executes repository code, automatically forks projects, creates branches, opens issues or pull requests, or writes to GitHub.
+> **The ghost only knows what the evidence can reveal.** RepoGhost does not access private repositories, private messages, or a person's offline life. It must not invent facts when the public record doesn't support an answer.
 
-- Accepts a public `https://github.com/owner/repository` URL and rejects unsupported hosts and malformed paths.
-- Accepts a GitHub username, `@handle`, or public profile URL and discovers public repositories for users and organizations, with client-side search and sorting before the user chooses a repository to investigate.
-- Provides **Account Intelligence Q&A** after account discovery: ask natural-language questions about public repository metadata, language/activity summaries, and a small sample of recent commits. Answers link to validated public evidence sources; unsupported questions return limitations rather than invented facts.
-- Reuses the discovered account snapshot for five minutes on the running instance and limits extra commit lookups to the three most recently pushed, non-archived, non-fork repositories to reduce repeated API calls.
-- Collects repository metadata, README content (when present), recent commits, open issues (excluding pull requests), and latest release data (when present) through GitHub's public REST API.
-- Asks an **open-weight language model** to summarize the project, assess health from observable signals, surface potential maintenance risks, and propose exactly three evidence-linked next steps.
-- Connects important findings to source IDs that are validated against the actual evidence returned by GitHub. Citations that are missing or invalid are discarded; an invalid analysis is not shown as fact.
-- Clearly reports when inference is not configured or unavailable while preserving repository evidence. There is no silent closed-model fallback and no fabricated AI report.
-- Uses bounded requests, timeouts, basic request-size limits, useful GitHub/API errors, and a responsive dark interface.
+## The live experience
 
-## Developer intelligence suite
+**[Launch RepoGhost](https://repoghost.onrender.com)**
 
-The developer-intelligence workbench adds four read-only workflows to the existing account and repository investigation UI:
+Enter a public GitHub username or profile URL to discover an account's public repositories. You can also investigate a public repository directly.
 
-- **Developer assessment** accepts a public account and target role, then identifies relevant repository metadata and inspected README signals, demonstrated technology indicators, recent push dates, evidence gaps, and role-specific interview questions. It is a screening aid, not a hiring decision.
-- **Account comparison** compares two distinct public accounts against an explicit goal. It shows the relevant repository match counts, technologies observed in the selected sample, latest recorded push dates, shared signals, and the evidence limits for each side. It does not produce a universal developer score.
-- **Repository health and revival plan** examines repository metadata, a bounded sample of recent commits and open issues, the available README excerpt, and the latest-release endpoint. It highlights observable maintenance signals and gives three source-linked next steps. An old push date is not treated as proof of abandonment.
-- **Repository recommendations** matches an account's returned public repositories to a stated use case, surfaces relevant metadata and license cautions, and links to real sampled open issues when available. Recommendations are keyword-relevance signals, not guarantees that a project is suitable.
+### Things to ask the ghost
 
-The JSON endpoints are `POST /api/intelligence/assess`, `POST /api/intelligence/compare`, `POST /api/intelligence/health`, and `POST /api/intelligence/recommend`. All use the existing request-size validation, public GitHub evidence collector, repository evidence cache, request IDs, and consistent error envelopes. Core results are deterministic and remain available without AI inference; they do not invent facts or rely on a model to count repositories. Detail collection is bounded and sequential to reduce GitHub API pressure.
+- Which repositories in this account are most relevant to a particular role or technology?
+- What technologies can you actually see evidence of in these projects?
+- What has changed recently across the public repositories?
+- What are the strongest projects to investigate for a specific goal?
+- What can the available README files, metadata, and sampled commits tell us—and what remains unknown?
+- Which two public accounts show relevant overlap for a role or use case?
+- Which repositories show maintenance signals worth investigating?
+- Where are there real open issues that could be contribution leads?
 
-The new frontend is available from the **Developer Intelligence** panel and has responsive forms, evidence links, loading and failure states, scope warnings, and role-specific output. It can prefill account inputs after the existing username search. All workflows are read-only: RepoGhost does not fork a project, open issues, create branches or pull requests, or modify source repositories.
+Answers depend on the evidence collected for that workflow. RepoGhost does not have universal knowledge of a person, and it does not treat a missing signal as proof that a skill or project does not exist.
 
-## Stack
+## What RepoGhost can investigate
 
-- Node.js 22+ using native HTTP, `fetch`, and the Node test runner. No third-party runtime dependencies are required.
-- Static HTML/CSS/JavaScript frontend served by the same Node process.
-- GitHub REST API for repository evidence. A token is optional for basic public lookups but strongly recommended on hosted runtimes where outbound IPs may be shared.
-- OpenRouter's OpenAI-compatible chat-completions API for inference.
+### Account intelligence and Q&A
+Accepts GitHub usernames, `@handles`, and public profile URLs, discovers public repositories for users and organizations, and supports natural-language follow-up questions about repository metadata, language and activity summaries, and a bounded sample of recent commits. Answers use validated public evidence where available; unsupported questions should return limitations instead of invented facts.
 
-The MVP uses plain JavaScript deliberately: the connected development environment does not have package-registry network access, and a dependency-free implementation keeps the first vertical slice runnable and auditable without a build toolchain. The modules are small and can be migrated to TypeScript once the deployment/build pipeline is established.
+### Developer assessment
+Connects a public account to a target role or goal. It surfaces relevant public repositories, observed technology signals, recent activity, evidence gaps, and role-specific interview questions. It is an investigation aid, not a hiring verdict or proof of engineering ability.
 
-## Open-weight model and open innovation
+### Two-account comparison
+Compares two distinct GitHub accounts against an explicit goal. It reports role-relevant matches, observable technologies, recent repository activity, shared signals, and evidence limitations. It does not issue a universal developer score or rank people by repository count alone.
 
-RepoGhost defaults to the explicit free endpoint `google/gemma-4-26b-a4b-it:free` (Gemma 4 26B A4B IT), an open-weight model released under Apache 2.0. The configured model ID is used for both repository analysis and account Q&A. If that model is unavailable, RepoGhost reports the error instead of silently switching to a different model. Account Q&A retries JSON and then cited plain-text output when needed, but both attempts use the same configured model. OpenRouter can still route that model to an available provider; it does not mean the application changes to a different model family.
+### Repository health and revival plan
+Inspects repository metadata, a bounded sample of recent commits and open issues, available README content, and release information when present. It identifies observable maintenance signals and proposes three source-linked next steps. An old push date or missing release is a reason to investigate—not proof that a project is abandoned.
 
-Why open innovation matters to RepoGhost:
+### Project and contribution recommendations
+Matches discovered public repositories to a stated goal, surfaces relevant metadata and license cautions, and links to real sampled open issues where available. Recommendations are relevance signals, not guarantees that a project is suitable.
 
-- **Replaceable inference:** `OPENROUTER_MODEL` is configuration, not hard-coded to a closed assistant. The analysis interface is isolated from GitHub collection, making model swaps possible.
-- **Auditable behavior:** the system prompt, data handling, citation validator, and inference contract are part of this repository and can be inspected or adapted.
-- **Evidence over authority:** model output is constrained to source IDs actually collected from GitHub. A model cannot create a new citation URL in the displayed result.
-- **Self-hosting path:** because the inference contract is a server-side chat-completions call, an operator can route to a self-hosted open-weight endpoint later without changing repository collection or the UI.
+## How it works
 
-RepoGhost does not claim that an externally hosted inference call is private or offline. Repository text sent for analysis is sent to the configured inference provider. Review that provider's terms before analyzing sensitive private information; this MVP supports public repositories only.
+RepoGhost combines public evidence collection, deterministic application logic, and AI-assisted interpretation.
 
-## Configuration
+1. **Summon the account or repository.** The application validates the supplied GitHub username, profile URL, or repository URL.
+2. **Follow the trail.** The server retrieves relevant public GitHub data, which can include repository metadata, README content, recent commits, open issues, and release information when available.
+3. **Question the evidence.** An open-weight language model helps interpret the evidence, summarize a project, and answer supported account questions.
+4. **Check the sources.** Important model-generated source references are validated against evidence actually collected from GitHub. Missing or invalid citations are discarded; invalid analysis is not presented as verified fact.
+5. **Reveal the limits.** Missing information, unsupported questions, and upstream failures should remain visible. RepoGhost distinguishes observable facts from hypotheses and avoids claiming it knows a maintainer's intent.
 
-Copy `.env.example` to `.env` for a local run, or configure the same values in the hosting provider's environment-variable settings. Never commit `.env` or place the key in frontend JavaScript.
+The account discovery flow caches the discovered snapshot for five minutes on the running instance. Extra commit lookups are limited to the three most recently pushed, non-archived, non-fork repositories to reduce unnecessary GitHub API requests.
+
+## The ghost's rules
+
+- **Evidence before theory.** Findings should point back to the public source data that supports them.
+- **A quiet project is not automatically a dead project.** Inactivity, old releases, and open issues are signals to examine, not proof of abandonment.
+- **No invented biography.** RepoGhost analyzes public GitHub work, not a person's private life or complete abilities.
+- **No universal developer score.** Role and project comparisons use stated criteria and show the limits of the available evidence.
+- **Read-only by design.** RepoGhost does not clone repositories, execute their code, install dependencies, run their test suites, fork projects, create branches, open issues or pull requests, or write to the repositories it investigates.
+- **Treat repository content as untrusted.** README text, issue content, descriptions, commit messages, and other repository-controlled text can contain prompt-injection attempts. The model is instructed to ignore embedded instructions in this content.
+- **No silent model substitution.** If the configured model is unavailable, RepoGhost reports an inference failure rather than quietly switching to a different model family.
+
+## How I built it
+
+- **Runtime:** Node.js with native HTTP and `fetch`
+- **Frontend:** Static HTML, CSS, and JavaScript served by the Node process
+- **GitHub evidence:** GitHub REST API
+- **AI inference:** OpenRouter's OpenAI-compatible chat-completions API
+- **Default model:** `google/gemma-4-26b-a4b-it:free` — Gemma 4 26B A4B IT
+- **Tests:** Node.js built-in test runner
+- **Deployment:** [Render](https://repoghost.onrender.com)
+- **License:** MIT
+
+No third-party runtime packages are required for the core Node.js application. The lightweight implementation keeps the main request flow easy to audit without a separate frontend build toolchain.
+
+## Open-weight AI and open innovation
+
+RepoGhost uses Google's **Gemma 4 26B A4B IT**, an open-weight model released under Apache 2.0, through OpenRouter.
+
+The model is part of the investigation experience—not just a decorative chatbot. It helps interpret repository evidence, summarize projects, and generate evidence-linked recommendations. The configured model is also used for account Q&A. If inference is unavailable, RepoGhost reports that problem instead of fabricating an AI response or silently changing to a different model.
+
+Open innovation matters to this project for three reasons:
+
+- **Choice and adaptability:** `OPENROUTER_MODEL` is configurable, and the inference layer is separated from GitHub collection and the frontend. Compatible models and providers can be evaluated without redesigning the whole application.
+- **Inspectability:** prompts, evidence handling, citation validation, and application behavior live in the repository and can be examined or adapted by other developers.
+- **A path to self-hosting:** the server-side chat-completions interface leaves room to route inference to a compatible self-hosted open-weight model in the future.
+
+The deployed version uses OpenRouter and requires an internet connection. It is **not currently an offline or local-inference application**, and repository material used in an AI request is sent to the configured inference provider. Review that provider's terms before using the service. RepoGhost currently supports investigation of public GitHub material.
+
+Open weights do not guarantee that every model answer is correct. RepoGhost still needs evidence validation, visible uncertainty, and human judgment.
+
+## Stack and architecture
+
+- Node.js 20+ (Node.js 22 LTS recommended)
+- Native HTTP server and `fetch`
+- Static frontend in `public/`
+- GitHub REST API for public repository and account data
+- OpenRouter for open-weight model inference
+- In-memory response and repository evidence caches
+- Request IDs, bounded request sizes, timeouts, and consistent API error envelopes
+- Automated checks in GitHub Actions
+
+The JSON intelligence endpoints are:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/intelligence/assess` | Role- and goal-oriented public account assessment |
+| `POST /api/intelligence/compare` | Compare two accounts against explicit criteria |
+| `POST /api/intelligence/health` | Repository health signals and revival planning |
+| `POST /api/intelligence/recommend` | Goal-based repository and contribution recommendations |
+
+These workflows use the public GitHub evidence collector, bounded collection, request IDs, and consistent error handling. Core data-driven results do not rely on the language model to count repositories or invent facts.
+
+## Run locally
+
+### Requirements
+- Node.js 20 or later (Node.js 22 LTS recommended)
+- A GitHub token is recommended for more reliable GitHub API request limits.
+- An OpenRouter API key is required for AI inference.
+
+### Install and run
+
+Clone the repository, enter the project directory, and run:
+
+```bash
+git clone https://github.com/egbutaify2-ui/repoghost.git
+cd repoghost
+```
+
+Configure environment variables in your shell or hosting environment. For local development, you can copy `.env.example` to `.env` if you use a local environment-variable loader; the application itself reads variables from the process environment and does not require a third-party runtime dependency.
 
 | Variable | Required | Purpose |
-|---|---|---|
-| `OPENROUTER_API_KEY` | For AI analysis | Server-side key from [OpenRouter API Keys](https://openrouter.ai/keys). Leave unset to use the repository-evidence view without generating an AI answer. |
-| `OPENROUTER_MODEL` | No | Model ID. Default: `google/gemma-4-26b-a4b-it:free`. RepoGhost does not silently switch to a different model if this one is unavailable. |
-| `GITHUB_TOKEN` | Recommended | Server-side token for authenticated public GitHub API requests and a higher request allowance. Never expose it in frontend code. |
-| `APP_URL` | No | Public URL sent as inference-provider attribution. Set this to the deployed domain. |
-| `PORT` | Usually set by host | HTTP listening port; defaults to `3000`. |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | For AI inference | Server-side OpenRouter API key. Keep it out of frontend code and source control. |
+| `OPENROUTER_MODEL` | No | Model ID. Defaults to `google/gemma-4-26b-a4b-it:free`. |
+| `GITHUB_TOKEN` | Recommended | Authenticated GitHub API requests and a higher request allowance. Keep it server-side. |
+| `APP_URL` | No | Application URL used for inference-provider attribution. |
+| `PORT` | Usually set by host | HTTP port. Defaults to `3000`. |
 
-No account, GitHub token, database, or API key is required from visitors. Configure `GITHUB_TOKEN` on the server for a more reliable GitHub API allowance, and `OPENROUTER_API_KEY` to enable model inference. Keep both as server-side secrets. When the OpenRouter key is missing, the app tells visitors and displays collected repository evidence only.
-
-## Run and test
-
-A GitHub Actions workflow runs `npm run check` on pull requests targeting `main` and pushes to `main` or the developer-intelligence feature branch.
-
-Requires Node.js 20+; Node.js 22 LTS is recommended.
+Start the application and run the checks:
 
 ```bash
 npm start
@@ -90,30 +162,40 @@ npm test
 npm run check
 ```
 
-`npm test` uses Node's built-in test runner and mocked upstream responses. It covers URL and GitHub account validation, public-repository evidence retrieval and account discovery, account Q&A evidence collection and citation validation, open-weight model request/error handling, user and organization repository lists, missing README/release/issue data, GitHub 404 and rate-limit handling, prompt-injection boundaries, HTTP routes and secure response headers, plus role-relevant developer assessment, two-account source separation, read-only repository health planning, goal-based recommendations, and all four intelligence API endpoints.
+By default, the local server listens on port `3000`. Do not commit secrets or expose API keys in client-side JavaScript.
 
-These tests are deterministic mocks. They do **not** establish that the GitHub API or OpenRouter inference succeeded against live services. A live validation should be completed after the app is deployed and `OPENROUTER_API_KEY` is configured. `/api/health` checks that the server is responding; `aiConfigured` reports only whether the server has a key, not whether a live inference request will succeed.
+## Tests and live verification
 
-## Deploy online with Render
+The test suite uses Node's built-in test runner and mocked upstream responses. It covers GitHub username and URL validation, account discovery, public repository evidence retrieval, account Q&A evidence collection and citation validation, model request and error handling, organization repository lists, missing README/release/issue data, GitHub 404 and rate-limit behavior, prompt-injection boundaries, HTTP routes and security headers, assessment, account comparison, repository health planning, recommendations, and the intelligence API endpoints.
 
-`render.yaml` describes a free Node web service with `/api/health` as the health-check route. It runs the test suite before starting the app. The hosted service needs a Git repository connected to Render.
+Run the full check with:
 
-1. Create the public GitHub repository `egbutaify2-ui/repoghost` and push the files in this directory to its default branch.
-2. In the Render dashboard, create a **free** web service from this repository (or use the Blueprint in `render.yaml`). Do not choose a paid plan.
-3. In the Render service's **Environment** page, set `OPENROUTER_API_KEY` to the key you create on OpenRouter, `OPENROUTER_MODEL` to the default shown above, and `APP_URL` to the deployed service URL. Keep the key in the server environment only.
-4. Wait for the deploy to finish, then verify `/api/health`, a real public repository lookup, and an AI-enabled investigation. The live test should be recorded separately from the mocked unit tests.
+```bash
+npm run check
+```
 
-Repository creation and deployment permissions are environment-dependent. The initial cloud session did not expose a GitHub repository-creation action, and Render requires the user to select a workspace before the service can be created. Those steps must be completed online in the connected accounts before a live public URL can be reported.
+Mocked tests verify application behavior under controlled inputs; they do not, by themselves, prove that external GitHub or OpenRouter services are working. A live smoke test is maintained in GitHub Actions to check the deployed service, authenticated GitHub access, configured model, and real inference output.
 
-## Evidence and safety model
+## Deployment
 
-The server gathers a bounded evidence set. README text, issue titles and bodies, commit messages, descriptions, topics, and release metadata are treated as untrusted input. The system prompt explicitly tells the model to ignore embedded instructions in repository content. RepoGhost never runs repository code. Model citations are filtered against the source IDs captured from GitHub, and an AI analysis with no valid evidence-backed three-step plan is withheld.
+The public application is deployed on Render:
 
-The app intentionally avoids claiming a project is “abandoned” from inactivity alone. Quiet history, old releases, or open issues are signals to inspect, not proof of why maintainers acted or stopped acting. All generated risks remain hypotheses and should be checked against the linked repository records.
+**[https://repoghost.onrender.com](https://repoghost.onrender.com)**
+
+The repository includes a Render Blueprint in `render.yaml`. The hosted service runs `npm run check` as its build command and `npm start` to launch the application. Configure `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `GITHUB_TOKEN`, and `APP_URL` in the service's environment settings as needed. Secrets must stay on the server.
 
 ## Project status
 
-RepoGhost remains an early-stage, read-only product. The new assessment, comparison, and recommendation workflows use deterministic relevance signals from returned public metadata and bounded README samples; they do not prove engineering skill or project suitability. Repository-health and contribution plans describe observed signals, not maintainer intent. RepoGhost does not clone repositories, install dependencies, execute code, run project test suites, write to GitHub, or store a database of past investigations. The account/repository AI paths require a configured provider and still need live inference verification in addition to mocked tests.
+RepoGhost is an early-stage, read-only project. Account Q&A is grounded in the public evidence collected for its supported workflows; it does not provide complete knowledge about a person or guarantee an answer to every possible question. Assessment and comparison are evidence aids, not definitive judgments about skill or hiring suitability. Repository-health findings describe observable signals, not maintainer intent.
+
+The goal is to help people investigate more carefully: summon the public trail, ask better questions, follow the sources, and admit when the evidence goes cold.
+
+## Creator
+
+Built by **Egbuta Ifeanyi Chukwu**.
+
+- [GitHub](https://github.com/egbutaify2-ui)
+- [DEV Community](https://dev.to/egbutaify2ui)
 
 ## License
 
