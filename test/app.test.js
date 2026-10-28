@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const {
   DEFAULT_MODEL,
   githubHeaders,
+  verifyGithubAuthentication,
   rateLimitMessage,
   HttpError,
   SYSTEM_PROMPT,
@@ -66,6 +67,40 @@ test('uses an optional server-side GitHub token for API calls', () => {
   assert.equal(authenticated.Authorization, 'Bearer ' + token);
   const publicOnly = githubHeaders(undefined, {});
   assert.equal(Object.hasOwn(publicOnly, 'Authorization'), false);
+});
+
+test('verifies real GitHub token authentication using the rate-limit endpoint without exposing the token', async () => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  const token = 'unit-test-github-token';
+  process.env.GITHUB_TOKEN = token;
+  try {
+    let requestedUrl = '';
+    let authorization = '';
+    const result = await verifyGithubAuthentication(async (input, options = {}) => {
+      requestedUrl = String(input);
+      authorization = options.headers.Authorization;
+      return responseJson({ resources: { core: { limit: 5000, remaining: 4999 } } });
+    });
+    assert.equal(requestedUrl, 'https://api.github.com/rate_limit');
+    assert.equal(authorization, 'Bearer ' + token);
+    assert.deepEqual(result, { status: 'authenticated', authenticated: true, rateLimit: 5000 });
+    assert.equal(JSON.stringify(result).includes(token), false);
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+  }
+});
+
+test('reports rejected GitHub token credentials without exposing upstream details', async () => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = 'invalid-test-github-token';
+  try {
+    const result = await verifyGithubAuthentication(async () => responseJson({ message: 'Bad credentials' }, 401));
+    assert.deepEqual(result, { status: 'rejected', authenticated: false });
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+  }
 });
 
 function evidenceFetch(options = {}) {
@@ -444,6 +479,38 @@ test('serves health check and rejects unsupported repository URLs on the HTTP en
   assert.equal((await invalid.json()).error.code, 'UNSUPPORTED_HOST');
 });
 
+
+test('health endpoint can verify GitHub authentication on demand', async (t) => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = 'route-test-github-token';
+  let requestedAuthorization = '';
+  const server = createServer({
+    logger: { error() {} },
+    fetchImpl: async (input, options = {}) => {
+      assert.equal(String(input), 'https://api.github.com/rate_limit');
+      requestedAuthorization = options.headers.Authorization;
+      return responseJson({ resources: { core: { limit: 5000, remaining: 4999 } } });
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+  });
+
+  const root = 'http://127.0.0.1:' + server.address().port;
+  const normalHealth = await fetch(root + '/api/health');
+  assert.equal(normalHealth.status, 200);
+  assert.equal((await normalHealth.json()).githubAuthVerification, undefined);
+
+  const diagnostic = await fetch(root + '/api/health?verifyGithubAuth=1');
+  assert.equal(diagnostic.status, 200);
+  const body = await diagnostic.json();
+  assert.deepEqual(body.githubAuthVerification, { status: 'authenticated', authenticated: true, rateLimit: 5000 });
+  assert.equal(requestedAuthorization, 'Bearer route-test-github-token');
+  assert.equal(JSON.stringify(body).includes('route-test-github-token'), false);
+});
 
 test('serves the GitHub repository discovery HTTP endpoint', async (t) => {
   const server = createServer({
