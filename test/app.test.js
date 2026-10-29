@@ -2114,6 +2114,143 @@ test('compacts large developer comparisons so follow-up chat can use the existin
   assert.deepEqual(result.citations, []);
 });
 
+
+test('answers "who wins?" directly from the stored comparison verdict and links both candidates', async () => {
+  const makeSide = (login, project, matchCount, repoSignalCount, sourceId) => ({
+    account: { login, url: 'https://github.com/' + login, publicRepos: 10, returnedCount: 10 },
+    relevantProjects: [{
+      fullName: login + '/' + project,
+      url: 'https://github.com/' + login + '/' + project,
+      matchedTerms: ['typescript', 'react', 'api'].slice(0, matchCount),
+      sourceIds: [sourceId],
+    }],
+    demonstratedTechnologies: [{ technology: 'TypeScript', repositoryCount: repoSignalCount, sourceIds: [sourceId] }],
+    sources: [
+      { id: 'account-profile', type: 'profile', title: 'GitHub account @' + login, url: 'https://github.com/' + login },
+      { id: sourceId, type: 'repository', title: login + '/' + project, url: 'https://github.com/' + login + '/' + project },
+    ],
+  });
+  const left = makeSide('Tabintel', 'ai-support-hub', 3, 8, 'repo-source');
+  const right = makeSide('egbutaify2-ui', 'sanity-lenslink-agent', 1, 2, 'repo-source');
+  const report = {
+    kind: 'developer-comparison',
+    summary: 'This comparison surfaces role-related public evidence.',
+    verdict: {
+      outcome: 'left',
+      headline: 'Preliminary pick for further evaluation: @Tabintel',
+      reason: '@Tabintel has 3 role-match signals across 1 project lead, compared with 1 signal across 1 lead for @egbutaify2-ui.',
+      method: 'Role-keyword overlap only; not a proficiency test.',
+      caveat: 'The report cannot establish individual authorship or performance.',
+      left: { login: 'Tabintel', roleRelevantProjectCount: 1, roleMatchSignalCount: 3 },
+      right: { login: 'egbutaify2-ui', roleRelevantProjectCount: 1, roleMatchSignalCount: 1 },
+    },
+    left,
+    right,
+    criteria: [],
+    limitations: ['Public evidence only.'],
+  };
+  let providerCalls = 0;
+  const result = await answerIntelligenceFollowup({ kind: 'comparison', inputs: {}, report }, 'who wins?', {
+    env: {},
+    fetchImpl: async () => { providerCalls += 1; throw new Error('Direct verdict should not call the model.'); },
+  });
+  assert.equal(providerCalls, 0);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answerType, 'case_evidence');
+  assert.match(result.answer, /Preliminary pick for further evaluation: @Tabintel/);
+  assert.match(result.answer, /not a verdict that this person is the better engineer/i);
+  assert.ok(result.citations.some((source) => source.url.includes('Tabintel/ai-support-hub')));
+  assert.ok(result.citations.some((source) => source.url.includes('egbutaify2-ui/sanity-lenslink-agent')));
+});
+
+test('answers TypeScript knowledge comparisons without pretending signals prove proficiency', async () => {
+  const makeSide = (login, project, count, sourceId) => ({
+    account: { login, url: 'https://github.com/' + login },
+    relevantProjects: [{
+      fullName: login + '/' + project,
+      url: 'https://github.com/' + login + '/' + project,
+      matchedTerms: ['typescript'],
+      sourceIds: [sourceId],
+    }],
+    demonstratedTechnologies: [{ technology: 'TypeScript', repositoryCount: count, sourceIds: [sourceId] }],
+    sources: [
+      { id: 'account-profile', type: 'profile', title: 'GitHub account @' + login, url: 'https://github.com/' + login },
+      { id: sourceId, type: 'repository', title: login + '/' + project, url: 'https://github.com/' + login + '/' + project },
+    ],
+  });
+  const report = {
+    kind: 'developer-comparison',
+    summary: 'Both accounts show TypeScript signals.',
+    verdict: { outcome: 'left', headline: 'Preliminary pick for further evaluation: @Tabintel', reason: 'More generic role signals.', left: { login: 'Tabintel', roleRelevantProjectCount: 3, roleMatchSignalCount: 8 }, right: { login: 'egbutaify2-ui', roleRelevantProjectCount: 2, roleMatchSignalCount: 5 } },
+    left: makeSide('Tabintel', 'ai-support-hub', 8, 'typescript-repo'),
+    right: makeSide('egbutaify2-ui', 'sanity-lenslink-agent', 2, 'typescript-repo'),
+    criteria: [],
+    limitations: [],
+  };
+  let providerCalls = 0;
+  const result = await answerIntelligenceFollowup({ kind: 'comparison', inputs: {}, report }, 'who has more knowledge in typescript?', {
+    env: {},
+    fetchImpl: async () => { providerCalls += 1; throw new Error('Direct skill comparison should not call the model.'); },
+  });
+  assert.equal(providerCalls, 0);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answerType, 'case_evidence');
+  assert.match(result.answer, /can’t honestly say who has more TypeScript knowledge/i);
+  assert.match(result.answer, /broader TypeScript visibility for @Tabintel/i);
+  assert.match(result.answer, /no defensible knowledge winner yet/i);
+  assert.ok(result.citations.some((source) => source.url.includes('Tabintel/ai-support-hub')));
+  assert.ok(result.citations.some((source) => source.url.includes('egbutaify2-ui/sanity-lenslink-agent')));
+});
+
+test('returns a useful case reply rather than a model-format error when both inference modes fail', async () => {
+  const report = {
+    kind: 'developer-comparison',
+    summary: 'This comparison surfaces TypeScript and application-development project leads.',
+    verdict: {
+      outcome: 'no_clear_preference',
+      headline: 'No clear preference from the available evidence',
+      reason: 'The role-related public signals do not distinguish the candidates reliably.',
+      caveat: 'The evidence cannot establish engineering quality.',
+      left: { login: 'alpha', roleRelevantProjectCount: 1, roleMatchSignalCount: 1 },
+      right: { login: 'beta', roleRelevantProjectCount: 1, roleMatchSignalCount: 1 },
+    },
+    left: { account: { login: 'alpha', url: 'https://github.com/alpha' }, relevantProjects: [], demonstratedTechnologies: [], sources: [{ id: 'profile', type: 'profile', title: 'alpha', url: 'https://github.com/alpha' }] },
+    right: { account: { login: 'beta', url: 'https://github.com/beta' }, relevantProjects: [], demonstratedTechnologies: [], sources: [{ id: 'profile', type: 'profile', title: 'beta', url: 'https://github.com/beta' }] },
+    criteria: [],
+    limitations: [],
+  };
+  let calls = 0;
+  const result = await answerIntelligenceFollowup({ kind: 'comparison', inputs: {}, report }, 'What should I inspect next?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async () => {
+      calls += 1;
+      return responseJson({ choices: [{ message: { content: calls === 1 ? 'not JSON' : 'still not a validated response' } }] });
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.status.code, 'AI_FALLBACK');
+  assert.ok(result.answer);
+  assert.match(result.answer, /No clear preference from the available evidence/);
+  assert.doesNotMatch(result.answer, /AI_INVALID_OUTPUT|model could not provide/i);
+  assert.ok(result.citations.length > 0);
+});
+
+test('returns a conversational answer when the model key is unavailable', async () => {
+  const report = {
+    kind: 'developer-assessment',
+    summary: 'The public snapshot surfaced possible role-relevant evidence in alpha/mobile.',
+    account: { login: 'alpha', url: 'https://github.com/alpha' },
+    relevantProjects: [{ fullName: 'alpha/mobile', url: 'https://github.com/alpha/mobile', matchedTerms: ['typescript'], sourceIds: ['repo'] }],
+    sources: [{ id: 'repo', type: 'repository', title: 'alpha/mobile', url: 'https://github.com/alpha/mobile' }],
+  };
+  const result = await answerIntelligenceFollowup({ kind: 'assessment', inputs: {}, report }, 'What did you find?', { env: {} });
+  assert.equal(result.status.code, 'AI_FALLBACK');
+  assert.ok(result.answer);
+  assert.match(result.answer, /alpha\/mobile/);
+  assert.doesNotMatch(result.answer, /AI_NOT_CONFIGURED|OpenRouter/i);
+});
+
 test('answers contextual intelligence follow-ups with citations from the stored public case', async () => {
   let requestBody;
   const report = {
@@ -2180,9 +2317,11 @@ test('rejects intelligence follow-up citations that are not in the investigated 
       }) } }],
     }),
   });
-  assert.equal(result.status.code, 'AI_INVALID_OUTPUT');
-  assert.equal(result.answer, null);
-  assert.deepEqual(result.citations, []);
+  assert.equal(result.status.code, 'AI_FALLBACK');
+  assert.ok(result.answer);
+  assert.doesNotMatch(result.answer, /The project is secure/);
+  assert.doesNotMatch(result.answer, /AI_INVALID_OUTPUT|model could not provide|The project is secure/i);
+  assert.ok(result.citations.every((source) => /^https:\/\/github\.com\//i.test(source.url)));
 });
 
 
@@ -2312,8 +2451,10 @@ test('still requires valid citations for claims classified as case evidence', as
       }) } }],
     }),
   });
-  assert.equal(result.status.code, 'AI_INVALID_OUTPUT');
-  assert.equal(result.answer, null);
+  assert.equal(result.status.code, 'AI_FALLBACK');
+  assert.ok(result.answer);
+  assert.doesNotMatch(result.answer, /AI_INVALID_OUTPUT|model could not provide/i);
+  assert.match(result.answer, /repository snapshot|evidence|report/i);
 });
 
 test('collects only usable GitHub source links for contextual follow-up citations', () => {
