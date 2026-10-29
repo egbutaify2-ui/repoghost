@@ -586,11 +586,61 @@ function buildDeveloperComparison(left, right, goal) {
       rightSourceIds: rightProjects.map((project) => project.sourceIds[0]),
     },
   ];
-  const summary = 'This comparison surfaces public evidence related to "' + cleanText(goal, 120) + '". It does not rank the accounts: inspect the cited projects and verify individual contribution, code quality and role-specific skills separately.';
+  const summarizeRoleSignals = (assessment) => {
+    const projects = Array.isArray(assessment && assessment.relevantProjects) ? assessment.relevantProjects : [];
+    const relevantProjects = projects.filter((project) =>
+      project && Array.isArray(project.matchedTerms) && project.matchedTerms.length > 0);
+    const signalCount = relevantProjects.reduce((count, project) =>
+      count + new Set(project.matchedTerms.map((term) => cleanText(term, 80).toLowerCase()).filter(Boolean)).size, 0);
+    return {
+      login: cleanText(assessment && assessment.account && assessment.account.login || 'unknown', 39),
+      roleRelevantProjectCount: relevantProjects.length,
+      roleMatchSignalCount: signalCount,
+    };
+  };
+  const leftEvidence = summarizeRoleSignals(left);
+  const rightEvidence = summarizeRoleSignals(right);
+  let preferredSide = 'no_clear_preference';
+  if (leftEvidence.roleMatchSignalCount !== rightEvidence.roleMatchSignalCount) {
+    preferredSide = leftEvidence.roleMatchSignalCount > rightEvidence.roleMatchSignalCount ? 'left' : 'right';
+  } else if (leftEvidence.roleRelevantProjectCount !== rightEvidence.roleRelevantProjectCount) {
+    preferredSide = leftEvidence.roleRelevantProjectCount > rightEvidence.roleRelevantProjectCount ? 'left' : 'right';
+  }
+
+  let verdictHeadline;
+  let verdictReason;
+  if (preferredSide === 'left' || preferredSide === 'right') {
+    const preferred = preferredSide === 'left' ? leftEvidence : rightEvidence;
+    const other = preferredSide === 'left' ? rightEvidence : leftEvidence;
+    verdictHeadline = 'Preliminary pick for further evaluation: @' + preferred.login;
+    verdictReason = 'In the returned public snapshot, @' + preferred.login + ' has ' +
+      preferred.roleMatchSignalCount + ' role-match signals across ' + preferred.roleRelevantProjectCount +
+      ' role-relevant project lead(s), compared with ' + other.roleMatchSignalCount + ' signals across ' +
+      other.roleRelevantProjectCount + ' lead(s) for @' + other.login +
+      '. This is a transparent keyword/metadata comparison, not a measure of engineering quality or proof of skill.';
+  } else {
+    verdictHeadline = 'No clear preference from the available evidence';
+    verdictReason = 'Both returned snapshots have ' + leftEvidence.roleMatchSignalCount +
+      ' role-match signals across ' + leftEvidence.roleRelevantProjectCount + ' role-relevant project lead(s). ' +
+      'This evidence does not distinguish the candidates reliably, so inspect their code and ask for a role-specific technical exercise.';
+  }
+
+  const verdict = {
+    outcome: preferredSide,
+    headline: verdictHeadline,
+    reason: verdictReason,
+    left: leftEvidence,
+    right: rightEvidence,
+    method: 'Preference is based first on the number of matched role-related terms across surfaced projects, then on the number of role-relevant project leads. Push recency, stars and repository totals do not decide this verdict.',
+    caveat: 'Use this as a shortlist suggestion only. The comparison cannot verify individual authorship, implementation quality, private work, or performance in the job.',
+  };
+  const summary = 'This comparison surfaces public evidence related to "' + cleanText(goal, 120) +
+    '". The preliminary verdict identifies which profile is better supported by the returned role-related signals for a closer look—not who is the better engineer overall.';
   return {
     kind: 'developer-comparison',
     goal: cleanText(goal, 160),
     summary,
+    verdict,
     criteria,
     sharedSignals: overlap,
     left,

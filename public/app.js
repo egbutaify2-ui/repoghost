@@ -658,9 +658,31 @@ function renderIntelComparison(comparison) {
         renderIntelEmpty('No exact role-specific match was found. RepoGhost still shows the account snapshot and inspected public README signals above.')) +
       '</div>';
   };
+  const verdict = comparison.verdict || {};
+  const outcome = ['left', 'right'].includes(verdict.outcome) ? verdict.outcome : 'no_clear_preference';
+  const verdictTitle = verdict.headline || 'No clear preference from the available evidence';
+  const verdictStats = (side, login) => '<div class="intel-verdict-candidate' + (outcome === side ? ' is-preferred' : '') + '">' +
+    '<div class="intel-verdict-candidate-name"><span>' + (outcome === side ? 'PREFERRED FOR REVIEW' : 'ALSO REVIEW') + '</span><strong>@' +
+    escapeHtml(login || 'unknown') + '</strong></div><div class="intel-verdict-metrics">' +
+    '<div><strong>' + escapeHtml(String((verdict[side] && verdict[side].roleRelevantProjectCount) ?? 0)) +
+    '</strong><span>role-relevant project leads</span></div><div><strong>' +
+    escapeHtml(String((verdict[side] && verdict[side].roleMatchSignalCount) ?? 0)) +
+    '</strong><span>role-match signals</span></div></div></div>';
+  const verdictCard = '<section class="intel-verdict-card ' + (outcome === 'no_clear_preference' ? 'no-clear' : 'has-preference') +
+    '" aria-label="Preliminary role-fit verdict"><div class="intel-verdict-header"><span class="card-kicker">THE CALL / PUBLIC EVIDENCE ONLY</span>' +
+    '<span class="intel-verdict-outcome">' + (outcome === 'no_clear_preference' ? 'NO CLEAR LEADER' : 'PRELIMINARY PREFERENCE') +
+    '</span></div><h3>' + escapeHtml(verdictTitle) + '</h3><p class="intel-verdict-reason">' +
+    escapeHtml(verdict.reason || 'The report does not contain enough role-specific evidence to prefer one profile.') + '</p>' +
+    '<div class="intel-verdict-candidates">' +
+    verdictStats('left', left.account && left.account.login) + verdictStats('right', right.account && right.account.login) +
+    '</div><p class="intel-verdict-method">' + escapeHtml(verdict.method ||
+      'This preference uses role-related public signals only; activity dates, stars and repository totals do not decide it.') +
+    '</p><p class="intel-verdict-caveat">' + escapeHtml(verdict.caveat ||
+      'This is a suggestion about whom to investigate first, not proof of engineering skill or job performance.') + '</p></section>';
   return '<div class="intel-result-heading"><div><span class="card-kicker">ACCOUNT COMPARISON</span><h3>' + escapeHtml(comparison.goal) + '</h3></div></div>' +
+    verdictCard +
     '<section class="intel-summary"><strong>What the traces suggest</strong><p>' + escapeHtml(comparison.summary) +
-    '</p><p class="intel-evidence-note">This comparison does not rank overall developer quality. Inspect each cited project and verify contribution and implementation quality separately.</p></section>' +
+    '</p><p class="intel-evidence-note">Use the preference above as a starting point for reviewing cited projects. Check the actual implementation, tests and the candidate’s individual contribution before making a decision.</p></section>' +
     renderIntelEvidenceMethodology() +
     '<div class="intel-compare-grid">' + renderSide(left) + renderSide(right) + '</div>' +
     '<section class="intel-result-card intel-criteria"><span class="card-kicker">TWO SHADOWS / EXPLICIT CRITERIA</span>' +

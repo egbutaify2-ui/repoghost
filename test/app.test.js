@@ -1501,7 +1501,8 @@ test('comparison keeps both accounts and their citations distinct and uses expli
   assert.ok(comparison.left.sources.every((source) => !source.url.includes('github.com/beta/')));
   assert.ok(comparison.right.sources.every((source) => !source.url.includes('github.com/alpha/')));
   assert.match(comparison.summary, /public evidence/i);
-  assert.match(comparison.summary, /does not rank the accounts/i);
+  assert.match(comparison.summary, /preliminary verdict/i);
+  assert.match(comparison.summary, /not who is the better engineer overall/i);
   assert.doesNotMatch(comparison.summary, /more role-relevant repository matches/i);
   assert.match(comparison.criteria[0].leftValue, /alpha\/mobile-app|No relevant project lead/i);
   assert.doesNotMatch(comparison.criteria[0].leftValue, /matched project\(s\)/i);
@@ -1531,6 +1532,54 @@ test('React assessment uses inspected README evidence and keeps account-wide tec
   assert.ok(assessment.languagesInReturnedSnapshot.includes('TypeScript'));
   assert.ok(assessment.demonstratedTechnologies.some((item) => item.technology === 'TypeScript'));
   assert.ok(assessment.demonstratedTechnologies.some((item) => item.technology === 'React'));
+});
+
+test('comparison produces a prominent-style verdict from role-match evidence rather than push recency', () => {
+  const left = {
+    account: { login: 'alpha', url: 'https://github.com/alpha' },
+    relevantProjects: [
+      { fullName: 'alpha/mobile-app', matchedTerms: ['react native', 'expo'], sourceIds: [] },
+      { fullName: 'alpha/client', matchedTerms: ['typescript'], sourceIds: [] },
+    ],
+    sources: [],
+    demonstratedTechnologies: [],
+    activity: { recentRepositories: [{ repository: 'alpha/mobile-app', pushedAt: '2025-01-01T00:00:00Z', sourceIds: [] }] },
+  };
+  const right = {
+    account: { login: 'beta', url: 'https://github.com/beta' },
+    relevantProjects: [
+      { fullName: 'beta/api', matchedTerms: ['node.js'], sourceIds: [] },
+    ],
+    sources: [],
+    demonstratedTechnologies: [],
+    activity: { recentRepositories: [{ repository: 'beta/api', pushedAt: '2026-10-28T00:00:00Z', sourceIds: [] }] },
+  };
+
+  const comparison = buildDeveloperComparison(left, right, 'React Native Engineer');
+
+  assert.equal(comparison.verdict.outcome, 'left');
+  assert.match(comparison.verdict.headline, /@alpha/);
+  assert.equal(comparison.verdict.left.roleRelevantProjectCount, 2);
+  assert.equal(comparison.verdict.left.roleMatchSignalCount, 3);
+  assert.equal(comparison.verdict.right.roleRelevantProjectCount, 1);
+  assert.equal(comparison.verdict.right.roleMatchSignalCount, 1);
+  assert.match(comparison.verdict.reason, /3 role-match signals/);
+  assert.match(comparison.verdict.method, /Push recency, stars and repository totals do not decide/);
+  assert.match(comparison.criteria.find((item) => /Latest recorded push/.test(item.label)).interpretation, /not a quality ranking/i);
+});
+
+test('comparison verdict says no clear preference when role-specific evidence is tied or absent', () => {
+  const side = (login) => ({
+    account: { login, url: 'https://github.com/' + login },
+    relevantProjects: [],
+    sources: [],
+    demonstratedTechnologies: [],
+    activity: { recentRepositories: [] },
+  });
+  const comparison = buildDeveloperComparison(side('alpha'), side('beta'), 'Software Engineer');
+  assert.equal(comparison.verdict.outcome, 'no_clear_preference');
+  assert.match(comparison.verdict.headline, /No clear preference/);
+  assert.match(comparison.verdict.reason, /does not distinguish the candidates reliably/i);
 });
 
 test('comparison keeps account-wide language and technology signals when no role matches exist', () => {
