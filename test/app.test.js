@@ -11,6 +11,8 @@ const {
   SYSTEM_PROMPT,
   analyzeEvidence,
   answerAccountQuestion,
+  answerIntelligenceFollowup,
+  collectIntelligenceChatSources,
   answerAccountHiringQuestion,
   answerSimpleAccountConversation,
   answerAccountForkQuestion,
@@ -1645,12 +1647,23 @@ test('all four developer-intelligence endpoints return structured evidence repor
       pushedAt: '2026-10-20T12:00:00Z', updatedAt: '2026-10-20T12:00:00Z',
     }]);
   };
+  const followupCalls = [];
   const server = createServer({
     logger: { error() {} },
     discoverRepositories: async (username) => makeDiscovery(username),
     getRepositoryEvidence: async (url) => {
       const match = new URL(url).pathname.split('/').filter(Boolean);
       return intelligenceRepositoryEvidence(match[0] + '/' + match[1]);
+    },
+    answerIntelligenceFollowup: async (caseRecord, question, options) => {
+      followupCalls.push({ caseRecord, question, options });
+      return {
+        answer: 'The stored case says this project matches the requested role.',
+        citations: [],
+        uncertainty: [],
+        status: { code: 'AI_READY', message: 'Mocked response.' },
+        model: 'test-model',
+      };
     },
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -1669,23 +1682,125 @@ test('all four developer-intelligence endpoints return structured evidence repor
   const assessment = await post('/api/intelligence/assess', { username: 'alpha', role: 'React Native Engineer', context: '' });
   assert.equal(assessment.response.status, 200);
   assert.equal(assessment.payload.assessment.kind, 'developer-assessment');
+  assert.equal(typeof assessment.payload.caseId, 'string');
+
+  const followup = await post('/api/intelligence/ask', {
+    caseId: assessment.payload.caseId,
+    question: 'Which project matched the role?',
+    history: [{ role: 'user', content: 'What did you find?' }],
+  });
+  assert.equal(followup.response.status, 200);
+  assert.match(followup.payload.answer, /stored case/);
+  assert.equal(followupCalls[0].caseRecord.kind, 'assessment');
+  assert.equal(followupCalls[0].caseRecord.inputs.username, 'alpha');
+  assert.equal(followupCalls[0].question, 'Which project matched the role?');
+  assert.equal(followupCalls[0].options.history[0].content, 'What did you find?');
+
+  const expiredCase = await post('/api/intelligence/ask', { caseId: 'expired-case', question: 'What did you find?' });
+  assert.equal(expiredCase.response.status, 410);
+  assert.equal(expiredCase.payload.error.code, 'INTELLIGENCE_CASE_EXPIRED');
 
   const comparison = await post('/api/intelligence/compare', { usernameA: 'alpha', usernameB: 'beta', goal: 'React Native Engineer' });
   assert.equal(comparison.response.status, 200);
   assert.equal(comparison.payload.comparison.left.account.login, 'alpha');
   assert.equal(comparison.payload.comparison.right.account.login, 'beta');
+  assert.equal(typeof comparison.payload.caseId, 'string');
 
   const health = await post('/api/intelligence/health', { repositoryUrl: 'https://github.com/alpha/mobile-app' });
   assert.equal(health.response.status, 200);
   assert.equal(health.payload.health.kind, 'repository-health');
+  assert.equal(typeof health.payload.caseId, 'string');
 
   const recommendations = await post('/api/intelligence/recommend', { username: 'alpha', goal: 'React Native mobile app' });
   assert.equal(recommendations.response.status, 200);
   assert.equal(recommendations.payload.recommendations.kind, 'repository-recommendations');
+  assert.equal(typeof recommendations.payload.caseId, 'string');
 
   const sameAccount = await post('/api/intelligence/compare', { usernameA: 'alpha', usernameB: 'alpha', goal: 'React Native Engineer' });
   assert.equal(sameAccount.response.status, 400);
   assert.equal(sameAccount.payload.error.code, 'SAME_ACCOUNT_COMPARISON');
+});
+
+
+test('answers contextual intelligence follow-ups with citations from the stored public case', async () => {
+  let requestBody;
+  const report = {
+    kind: 'developer-assessment',
+    account: { login: 'alpha', url: 'https://github.com/alpha' },
+    role: 'React Native Engineer',
+    summary: 'The returned public record includes one React Native project.',
+    sources: [{ id: 'project-readme', title: 'alpha/mobile-app README', url: 'https://github.com/alpha/mobile-app#readme' }],
+    relevantProjects: [{ fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app', description: 'React Native mobile app using Expo', matchedTerms: ['react native', 'expo'], sourceIds: ['project-readme'] }],
+  };
+  const result = await answerIntelligenceFollowup({
+    kind: 'assessment',
+    inputs: { username: 'alpha', role: 'React Native Engineer' },
+    report,
+  }, 'What supports the React Native match?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    history: [{ role: 'user', content: 'What projects did you find?' }, { role: 'assistant', content: 'One React Native project.' }],
+    fetchImpl: async (input, options) => {
+      assert.equal(String(input), 'https://openrouter.test/api/v1/chat/completions');
+      assert.equal(options.headers.Authorization, 'Bearer test-secret');
+      requestBody = JSON.parse(options.body);
+      return responseJson({
+        model: 'test-followup-model',
+        choices: [{ message: { content: JSON.stringify({
+          answer: 'The returned project description explicitly says it is a React Native mobile app using Expo.',
+          sourceIds: ['project-readme'],
+          uncertainty: ['The report does not establish who authored each line of code.'],
+        }) } }],
+      });
+    },
+  });
+  assert.equal(requestBody.response_format.type, 'json_object');
+  assert.equal(requestBody.model, DEFAULT_MODEL);
+  assert.match(requestBody.messages[0].content, /Conversation history can resolve follow-up references/);
+  assert.match(requestBody.messages[1].content, /What supports the React Native match/);
+  assert.match(requestBody.messages[1].content, /project-readme/);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answer, 'The returned project description explicitly says it is a React Native mobile app using Expo.');
+  assert.equal(result.citations[0].id, 'project-readme');
+  assert.equal(result.uncertainty[0], 'The report does not establish who authored each line of code.');
+});
+
+test('rejects intelligence follow-up citations that are not in the investigated case', async () => {
+  const report = {
+    kind: 'repository-health',
+    repository: { fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app' },
+    sources: [{ id: 'repo-source', title: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app' }],
+  };
+  const result = await answerIntelligenceFollowup({
+    kind: 'health',
+    inputs: { repositoryUrl: 'https://github.com/alpha/mobile-app' },
+    report,
+  }, 'Is this project secure?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    fetchImpl: async () => responseJson({
+      model: 'test-followup-model',
+      choices: [{ message: { content: JSON.stringify({
+        answer: 'The project is secure.',
+        sourceIds: ['made-up-source'],
+        uncertainty: [],
+      }) } }],
+    }),
+  });
+  assert.equal(result.status.code, 'AI_INVALID_OUTPUT');
+  assert.equal(result.answer, null);
+  assert.deepEqual(result.citations, []);
+});
+
+test('collects only usable GitHub source links for contextual follow-up citations', () => {
+  const sources = collectIntelligenceChatSources({
+    sources: [
+      { id: 'valid-one', title: 'Project', url: 'https://github.com/alpha/mobile-app' },
+      { id: 'bad-url', title: 'Other site', url: 'https://example.com/alpha/mobile-app' },
+      { id: 'bad-id!', title: 'Invalid ID', url: 'https://github.com/alpha/other-project' },
+    ],
+    nested: { sources: [{ id: 'valid-two', title: 'Issue', url: 'https://github.com/alpha/mobile-app/issues/2' }] },
+  });
+  assert.deepEqual(sources.map((source) => source.id), ['valid-one', 'valid-two']);
 });
 
 test('parses a fenced JSON response if the provider wraps it in a fence', () => {
