@@ -318,6 +318,12 @@ async function discoverRepositories(input, options = {}) {
     .map((repository) => {
       const fullName = String(repository.full_name || `${accountName}/${repository.name || 'repository'}`).slice(0, 160);
       const safeFullName = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(fullName) ? fullName : `${accountName}/${String(repository.name || 'repository').replace(/[^A-Za-z0-9_.-]/g, '')}`;
+      const rawParentFullName = repository.parent && typeof repository.parent.full_name === 'string'
+        ? repository.parent.full_name
+        : null;
+      const parentFullName = rawParentFullName && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(rawParentFullName)
+        ? rawParentFullName
+        : null;
       return {
         id: Number.isSafeInteger(repository.id) ? repository.id : null,
         name: String(repository.name || safeFullName.split('/')[1]).slice(0, 100),
@@ -333,6 +339,10 @@ async function discoverRepositories(input, options = {}) {
         createdAt: safeDate(repository.created_at),
         archived: repository.archived === true,
         fork: repository.fork === true,
+        parentFullName,
+        mirrorUrl: typeof repository.mirror_url === 'string' && repository.mirror_url.trim()
+          ? repository.mirror_url.trim().slice(0, 500)
+          : null,
         defaultBranch: typeof repository.default_branch === 'string' ? repository.default_branch.slice(0, 100) : null,
         license: repository.license && typeof repository.license.name === 'string' ? repository.license.name.slice(0, 100) : null,
         topics: Array.isArray(repository.topics) ? repository.topics.slice(0, 20).filter((topic) => typeof topic === 'string').map((topic) => topic.slice(0, 80)) : [],
