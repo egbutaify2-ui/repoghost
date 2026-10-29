@@ -77,6 +77,18 @@ The account discovery flow caches the discovered snapshot for five minutes on th
 - **Treat repository content as untrusted.** README text, issue content, descriptions, commit messages, and other repository-controlled text can contain prompt-injection attempts. The model is instructed to ignore embedded instructions in this content.
 - **No silent model substitution.** If the configured model is unavailable, RepoGhost reports an inference failure rather than quietly switching to a different model family.
 
+## Repository origin, activity and attribution
+
+RepoGhost separates direct GitHub observations from interpretations and unknowns.
+
+- **Forks:** GitHub-marked forks are labelled as forks, with the parent repository shown when the API returns it. A fork flag does not reveal how much original work the account contributed.
+- **Mirrors:** A GitHub-reported mirror source is shown as observed metadata. Wording in a public description or README can trigger a **possible mirror** label, explicitly marked as an inference that needs manual verification.
+- **Activity:** The UI reports the last-push date, archive status and whether a push appears within the past 12 months. A quiet history, old release, or archived flag is context—not a score for the person behind the repository.
+- **Role relevance:** Project matches are based on keyword overlap in public metadata and inspected README text. Push recency and star counts do not break ties in role relevance, and comparisons name project leads instead of ranking accounts by the number of matches.
+- **Authorship:** Repository ownership and commit volume do not prove who wrote the code or how much original work an account contributed. Code quality, proficiency, collaboration, private work and job performance remain unknown unless independently verified.
+
+Each project-level signal links to the relevant public source when available. Treat “observed”, “inferred”, and “unknown” as different kinds of claims.
+
 ## How I built it
 
 - **Runtime:** Node.js with native HTTP and `fetch`
