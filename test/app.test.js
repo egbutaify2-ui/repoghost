@@ -1922,6 +1922,131 @@ test('retries plain-text conversational mode when structured inference times out
   assert.deepEqual(result.citations, []);
 });
 
+
+test('compacts large developer comparisons so follow-up chat can use the existing evidence', async () => {
+  let requestBody;
+  const makeSide = (login, prefix, language) => {
+    const sources = [{
+      id: 'account-profile',
+      type: 'profile',
+      title: 'GitHub account @' + login,
+      url: 'https://github.com/' + login,
+    }];
+    for (let index = 1; index <= 16; index += 1) {
+      sources.push({
+        id: 'repository-' + index,
+        type: 'repository',
+        title: login + '/project-' + index,
+        url: 'https://github.com/' + login + '/project-' + index,
+      });
+    }
+    return {
+      kind: 'developer-assessment',
+      account: { login, name: login, url: 'https://github.com/' + login, publicRepos: 75, returnedCount: 30 },
+      role: 'Software Engineering',
+      summary: 'Role-related public project leads were found in the returned sample. '.repeat(8),
+      relevantProjects: Array.from({ length: 12 }, (_, index) => ({
+        fullName: login + '/project-' + (index + 1),
+        url: 'https://github.com/' + login + '/project-' + (index + 1),
+        description: ('Project description with implementation context. ').repeat(20),
+        language,
+        matchedTerms: ['software', 'engineering', prefix + '-signal-' + index],
+        reasons: [('Public metadata and README samples include role-related terms. ').repeat(6)],
+        sourceIds: ['repository-' + (index + 1)],
+      })),
+      demonstratedTechnologies: Array.from({ length: 24 }, (_, index) => ({
+        technology: prefix + '-technology-' + index,
+        repositoryCount: index % 4 + 1,
+        sourceIds: ['repository-' + (index % 16 + 1)],
+      })),
+      languagesInReturnedSnapshot: Array.from({ length: 20 }, (_, index) => prefix + '-language-' + index),
+      activity: {
+        observationBasis: 'Current public repository metadata; bounded sample.',
+        recentRepositories: Array.from({ length: 8 }, (_, index) => ({
+          repository: login + '/recent-' + index,
+          pushedAt: '2026-10-2' + (index % 8) + 'T09:00:00.000Z',
+          url: 'https://github.com/' + login + '/recent-' + index,
+          sourceIds: ['repository-' + (index + 1)],
+        })),
+        sampledRepositories: 30,
+        listMayBeIncomplete: true,
+      },
+      strengths: Array.from({ length: 10 }, (_, index) => ({
+        claim: ('Potential role-relevant signal. ').repeat(10) + index,
+        sourceIds: ['repository-' + (index % 16 + 1)],
+      })),
+      evidenceGaps: Array.from({ length: 10 }, () => 'Individual authorship and code quality are not proven by public metadata.'),
+      limitations: Array.from({ length: 10 }, () => 'This only covers a bounded public snapshot and cannot establish role performance.'),
+      sources,
+    };
+  };
+  const report = {
+    kind: 'developer-comparison',
+    goal: 'Software Engineering',
+    summary: 'This comparison surfaces public evidence related to software engineering, but does not rank the accounts.',
+    criteria: Array.from({ length: 4 }, (_, index) => ({
+      label: 'Comparison criterion ' + index,
+      leftValue: ('Left-side signal and caveat. ').repeat(30),
+      rightValue: ('Right-side signal and caveat. ').repeat(30),
+      interpretation: ('This is a limited public signal and not a direct engineering-quality measure. ').repeat(10),
+      leftSourceIds: Array.from({ length: 12 }, (_, sourceIndex) => 'repository-' + (sourceIndex + 1)),
+      rightSourceIds: Array.from({ length: 12 }, (_, sourceIndex) => 'repository-' + (sourceIndex + 1)),
+    })),
+    sharedSignals: ['software', 'engineering'],
+    left: makeSide('Tabintel', 'left', 'TypeScript'),
+    right: makeSide('egbutaify2-ui', 'right', 'JavaScript'),
+    limitations: [
+      'Only returned public repositories and bounded README/activity samples are covered.',
+      'Repository count, stars, commit volume and push recency are not direct measures of engineering quality.',
+      'Private work, individual authorship and role performance cannot be established from this evidence.',
+    ],
+  };
+
+  const result = await answerIntelligenceFollowup({
+    kind: 'comparison',
+    inputs: { leftUsername: 'Tabintel', rightUsername: 'egbutaify2-ui', goal: 'Software Engineering' },
+    report,
+  }, 'I think both profiles are good in software engineering. What do you think?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async (input, options) => {
+      requestBody = JSON.parse(options.body);
+      const prompt = requestBody.messages[1].content;
+      assert.match(prompt, /developer-comparison/);
+      assert.match(prompt, /Tabintel\/project-1/);
+      assert.match(prompt, /egbutaify2-ui\/project-1/);
+      assert.match(prompt, /public repositories and bounded README\/activity samples/);
+      const evidenceMarker = 'Case evidence JSON: ';
+      const evidenceStart = prompt.indexOf(evidenceMarker);
+      assert.notEqual(evidenceStart, -1);
+      const evidenceJson = prompt.slice(evidenceStart + evidenceMarker.length);
+      assert.ok(evidenceJson.length < 18_000, 'the compacted case evidence should fit the configured context limit');
+      const evidence = JSON.parse(evidenceJson);
+      const sourceIds = evidence.sources.map((source) => source.id);
+      assert.ok(sourceIds.some((id) => id.startsWith('left_')), 'left-side sources must be preserved with unique IDs');
+      assert.ok(sourceIds.some((id) => id.startsWith('right_')), 'right-side sources must be preserved with unique IDs');
+      return responseJson({
+        model: 'test-comparison-chat-model',
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              answer: 'That is a reasonable initial impression: both snapshots show software-related public project signals. But the comparison is not enough to conclude that either person is a strong engineer; a project walkthrough, code review, tests, and a role-specific exercise would provide stronger evidence.',
+              answerType: 'conversation',
+              sourceIds: [],
+              uncertainty: ['The report cannot establish individual authorship or role performance.'],
+            }),
+          },
+        }],
+      });
+    },
+  });
+
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answerType, 'conversation');
+  assert.match(result.answer, /reasonable initial impression/);
+  assert.deepEqual(result.citations, []);
+});
+
 test('answers contextual intelligence follow-ups with citations from the stored public case', async () => {
   let requestBody;
   const report = {
