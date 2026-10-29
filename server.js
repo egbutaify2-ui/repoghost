@@ -2456,7 +2456,7 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
   if (directAnswer) return directAnswer;
   const env = options.env || process.env;
   const apiKey = typeof env.OPENROUTER_API_KEY === 'string' ? env.OPENROUTER_API_KEY.trim() : '';
-  return buildIntelligenceChatFallback(caseRecord, question, sourceList);
+  if (!apiKey) return buildIntelligenceChatFallback(caseRecord, question, sourceList);
 
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const baseUrl = (options.openRouterBaseUrl || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
