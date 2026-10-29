@@ -1501,7 +1501,8 @@ test('comparison keeps both accounts and their citations distinct and uses expli
   assert.ok(comparison.left.sources.every((source) => !source.url.includes('github.com/beta/')));
   assert.ok(comparison.right.sources.every((source) => !source.url.includes('github.com/alpha/')));
   assert.match(comparison.summary, /public evidence/i);
-  assert.match(comparison.summary, /does not rank the accounts/i);
+  assert.match(comparison.summary, /preliminary verdict/i);
+  assert.match(comparison.summary, /not who is the better engineer overall/i);
   assert.doesNotMatch(comparison.summary, /more role-relevant repository matches/i);
   assert.match(comparison.criteria[0].leftValue, /alpha\/mobile-app|No relevant project lead/i);
   assert.doesNotMatch(comparison.criteria[0].leftValue, /matched project\(s\)/i);
@@ -1564,7 +1565,7 @@ test('comparison produces a prominent-style verdict from role-match evidence rat
   assert.equal(comparison.verdict.right.roleMatchSignalCount, 1);
   assert.match(comparison.verdict.reason, /3 role-match signals/);
   assert.match(comparison.verdict.method, /Push recency, stars and repository totals do not decide/);
-  assert.match(comparison.criteria.find((item) => item.label === 'Latest recorded push').interpretation, /not a quality ranking/i);
+  assert.match(comparison.criteria.find((item) => /Latest recorded push/.test(item.label)).interpretation, /not a quality ranking/i);
 });
 
 test('comparison verdict says no clear preference when role-specific evidence is tied or absent', () => {
