@@ -786,6 +786,21 @@ function renderIntelligenceChatMessage(role, message, citations = [], uncertaint
 }
 
 
+function isModelFailureReply(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.length > 800) return false;
+  return /the model could not provide a conversational answer/i.test(text) ||
+    /valid response type.{0,180}verifiable citations/i.test(text) ||
+    /please try rephrasing (?:the|your) question/i.test(text);
+}
+
+function isComparisonSnapshot(report) {
+  if (!report || typeof report !== 'object') return false;
+  if (report.kind === 'developer-comparison' || report.kind === 'comparison') return true;
+  return Boolean(report.left && report.right &&
+    (report.verdict || Array.isArray(report.criteria) || (report.left.account && report.right.account)));
+}
+
 function buildLocalIntelligenceFallback(report, questionInput) {
   const question = String(questionInput || '').trim();
   const q = question.toLowerCase().replace(/[^a-z0-9+#.]+/g, ' ').trim();
@@ -815,7 +830,10 @@ function buildLocalIntelligenceFallback(report, questionInput) {
   });
 
   if (!report || typeof report !== 'object') {
-    return reply('I’m still here. The response service stumbled and the case details are not available in this turn. I can still explain the topic generally, or you can rerun the investigation to restore its evidence.', 'conversation');
+    if (/\b(?:what is|what's|explain|define)\s+(?:typescript|type script)\b/i.test(question)) {
+      return reply('TypeScript is JavaScript with a static type system. It helps developers describe data shapes and function contracts and catch certain mistakes before code runs. That is general language knowledge, not evidence of what either person knows. To compare proficiency, inspect real typed code and tests or give both candidates the same practical task.', 'general_context', ['No active case evidence was available for a developer-specific claim.']);
+    }
+    return reply('I’m still here. The response service stumbled and the case details are not available in this turn. I can still discuss the topic generally, or you can rerun the investigation to restore the evidence. What specific claim or project should we examine?', 'conversation');
   }
   if (/\b(?:hi|hello|hey|thanks|thank you|wow|nice)\b/i.test(question) && question.split(/\s+/).length <= 8) {
     return reply(/thanks|thank you/i.test(question)
@@ -823,7 +841,7 @@ function buildLocalIntelligenceFallback(report, questionInput) {
       : 'I’m here. We can keep investigating projects, compare visible signals, or talk through what the report cannot establish.', 'conversation');
   }
 
-  if (report.kind === 'developer-comparison') {
+  if (isComparisonSnapshot(report)) {
     const left = report.left || {};
     const right = report.right || {};
     const leftLogin = String(left.account && left.account.login || 'left profile');
@@ -1023,7 +1041,7 @@ function attachIntelligenceChat(output, workflow, caseId, caseInputs, caseReport
 
       // A provider failure is not part of the conversation. Keep it out of history,
       // preserve the user's question for retry, and let the thread continue cleanly.
-      if (!payload.answer || !String(payload.answer).trim()) {
+      if (!payload.answer || !String(payload.answer).trim() || isModelFailureReply(payload.answer)) {
         const fallback = buildLocalIntelligenceFallback(caseReport, question);
         const answer = fallback.answer + ' (I used the evidence already loaded in this case rather than leave you without a reply.)';
         messages.appendChild(renderIntelligenceChatMessage('assistant', answer, fallback.citations, fallback.uncertainty, false, fallback.answerType));
