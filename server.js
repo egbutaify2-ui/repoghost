@@ -21,6 +21,8 @@ const REPOSITORY_EVIDENCE_CACHE_MAX_ENTRIES = 60;
 const githubResponseCaches = new WeakMap();
 
 const MODEL_TIMEOUT_MS = 25_000;
+const INTELLIGENCE_CHAT_JSON_TIMEOUT_MS = 18_000;
+const INTELLIGENCE_CHAT_TEXT_TIMEOUT_MS = 22_000;
 const DEFAULT_MODEL = 'google/gemma-4-26b-a4b-it:free';
 const DEFAULT_ACCOUNT_FALLBACK_MODELS = ['openrouter/free'];
 
@@ -1785,10 +1787,12 @@ function compactIntelligenceChatValue(value, key = '', depth = 0) {
   }
   if (Array.isArray(value)) {
     const max = key === 'sourceIds' ? 10
-      : /relevantProjects|recommendations|recentRepositories|repositories|projects/i.test(key) ? 4
-        : /sources/i.test(key) ? 0
-          : /warnings|limitations|signals|criteria|documentationSignals|contributionOpportunities|revivalPlan/i.test(key) ? 8
-            : /commits|issues|releases/i.test(key) ? 5 : 5;
+      : key === 'demonstratedTechnologies' ? 14
+        : key === 'languagesInReturnedSnapshot' ? 20
+          : /relevantProjects|recommendations|recentRepositories|repositories|projects/i.test(key) ? 4
+            : /sources/i.test(key) ? 0
+              : /warnings|limitations|signals|criteria|documentationSignals|contributionOpportunities|revivalPlan/i.test(key) ? 8
+                : /commits|issues|releases/i.test(key) ? 5 : 5;
     if (max === 0) return undefined;
     return value.slice(0, max).map((item) => compactIntelligenceChatValue(item, '', depth + 1)).filter((item) => item !== undefined);
   }
@@ -1912,10 +1916,68 @@ function validateIntelligenceChatTextAnswer(output, evidence) {
   };
 }
 
+
+function answerIntelligenceDirectQuestion(caseRecord, questionInput, sourceList = []) {
+  const question = String(questionInput || '').trim();
+  const report = caseRecord && caseRecord.report;
+  if (!question || !report || typeof report !== 'object') return null;
+
+  if (/\b(?:lines?\s+of\s+code|loc|codebase\s+size|more\s+code|larger\s+codebase)\b/i.test(question)) {
+    return {
+      answer: 'This report did not count the lines of code in each repository, so I can’t honestly name the largest one yet. GitHub’s language breakdown measures bytes, not lines. To answer accurately, I’d need to inspect the tracked source files in the candidate repositories and count their lines, excluding generated files and dependencies. Which two projects should we compare first?',
+      answerType: 'general_context',
+      citations: [],
+      uncertainty: ['Repository line counts were not collected as part of this investigation.'],
+      status: { code: 'AI_READY', message: 'Answered directly with the current evidence limitation.' },
+      model: null,
+    };
+  }
+
+  if (report.kind !== 'developer-assessment') return null;
+  const asksForProject = /\b(which|what|name|identify)\b.{0,100}\b(project|repo|repository)\b|\b(project|repo|repository)\b.{0,80}\b(which|what|uses?|used|has|had)\b/i.test(question);
+  if (!asksForProject) return null;
+
+  const technologySignals = Array.isArray(report.demonstratedTechnologies) ? report.demonstratedTechnologies : [];
+  const normalizedQuestion = question.toLowerCase();
+  const matches = technologySignals.filter((signal) => {
+    const label = String(signal && signal.technology || '').trim().toLowerCase();
+    return label.length > 1 && normalizedQuestion.includes(label);
+  });
+  if (!matches.length) return null;
+
+  const byId = new Map((sourceList || []).map((source) => [source.id, source]));
+  const projects = new Map();
+  for (const signal of matches) {
+    for (const id of Array.isArray(signal.sourceIds) ? signal.sourceIds : []) {
+      const source = byId.get(id);
+      if (!source || !source.url || !/^https:\/\/github\.com\//i.test(source.url)) continue;
+      projects.set(source.id, source);
+    }
+  }
+  if (!projects.size) return null;
+
+  const projectRows = [...projects.values()].slice(0, 6);
+  const labels = [...new Set(matches.map((item) => item.technology))];
+  const names = projectRows.map((source) => source.title);
+  const count = matches.reduce((sum, signal) => sum + (Number.isFinite(signal.repositoryCount) ? signal.repositoryCount : 0), 0);
+  return {
+    answer: names.length === 1
+      ? 'The public technology signals point to **' + names[0] + '** as the repository associated with ' + labels.join(', ') + '. This is based on the account assessment’s metadata/README signals, not a live run of the project.'
+      : 'The public technology signals associate ' + labels.join(', ') + ' with these repositories: ' + names.join(', ') + '. The assessment recorded ' + (count || names.length) + ' matching repository signal(s); this is a lead to inspect, not proof the dependency is actively used at runtime.',
+    answerType: 'case_evidence',
+    citations: projectRows,
+    uncertainty: ['Technology matching comes from returned public repository metadata and any inspected README samples; RepoGhost did not run the project.'],
+    status: { code: 'AI_READY', message: 'Answered directly from the stored investigation evidence.' },
+    model: null,
+  };
+}
+
 async function answerIntelligenceFollowup(caseRecord, questionInput, options = {}) {
   const question = validateAccountQuestion(questionInput);
   const report = caseRecord && caseRecord.report;
   const sourceList = collectIntelligenceChatSources(report);
+  const directAnswer = answerIntelligenceDirectQuestion(caseRecord, question, sourceList);
+  if (directAnswer) return directAnswer;
   const env = options.env || process.env;
   const apiKey = typeof env.OPENROUTER_API_KEY === 'string' ? env.OPENROUTER_API_KEY.trim() : '';
   if (!apiKey) {
@@ -1931,8 +1993,6 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const baseUrl = (options.openRouterBaseUrl || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
   const model = env.OPENROUTER_MODEL || DEFAULT_MODEL;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
   const history = normalizeAccountChatHistory(options.history);
   const evidence = {
     sources: sourceList,
@@ -1960,12 +2020,15 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
     '\n\nCase evidence JSON: ' + evidencePayload;
   const endpoint = baseUrl + '/chat/completions';
 
-  const fetchCompletion = (mode) => {
+  const fetchCompletion = async (mode) => {
+    const controller = new AbortController();
+    const timeoutMs = mode === 'json' ? INTELLIGENCE_CHAT_JSON_TIMEOUT_MS : INTELLIGENCE_CHAT_TEXT_TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const request = {
       model,
       models: accountFallbackModels(env, model),
       temperature: mode === 'json' ? 0.2 : 0,
-      max_tokens: 850,
+      max_tokens: 600,
       provider: { require_parameters: true },
       messages: [
         {
@@ -1981,22 +2044,45 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
       request.response_format = { type: 'json_object' };
       request.plugins = [{ id: 'response-healing' }];
     }
-    return fetchImpl(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + apiKey,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': env.APP_URL || 'https://repoghost.app',
-        'X-Title': 'RepoGhost - Developer and Repository Intelligence',
-      },
-      signal: controller.signal,
-      body: JSON.stringify(request),
-    });
+    try {
+      return await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + apiKey,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': env.APP_URL || 'https://repoghost.app',
+          'X-Title': 'RepoGhost - Developer and Repository Intelligence',
+        },
+        signal: controller.signal,
+        body: JSON.stringify(request),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   };
 
   try {
     for (const mode of ['json', 'text']) {
-      const response = await fetchCompletion(mode);
+      let response;
+      try {
+        response = await fetchCompletion(mode);
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          if (mode === 'json') {
+            console.warn('[RepoGhost] Structured intelligence reply timed out; trying plain-text recovery.');
+            continue;
+          }
+          return {
+            answer: null,
+            answerType: null,
+            citations: [],
+            uncertainty: [],
+            status: { code: 'AI_TIMEOUT', message: 'I’m still here — the first reply took too long, and my recovery attempt also timed out. Your investigation is intact. Try asking this in a shorter way, and I’ll keep going.' },
+            model: null,
+          };
+        }
+        throw error;
+      }
       if (response.status === 404) {
         const detail = await readOpenRouterErrorMessage(response);
         return {
@@ -2049,7 +2135,7 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
     };
   } catch (error) {
     if (error && error.name === 'AbortError') {
-      return { answer: null, citations: [], uncertainty: [], status: { code: 'AI_TIMEOUT', message: 'The model took too long to answer. Please try this follow-up again.' }, model: null };
+      return { answer: null, answerType: null, citations: [], uncertainty: [], status: { code: 'AI_TIMEOUT', message: 'I’m still here — the reply took too long. Your investigation is intact, and you can retry with a shorter question.' }, model: null };
     }
     const cause = error && error.cause;
     console.error('[RepoGhost] Intelligence follow-up failed', {
@@ -2057,12 +2143,9 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
       code: cause && typeof cause.code === 'string' ? cause.code.slice(0, 80) : undefined,
       message: error && typeof error.message === 'string' ? error.message.slice(0, 200) : undefined,
     });
-    return { answer: null, citations: [], uncertainty: [], status: { code: 'AI_UNAVAILABLE', message: 'The model service could not answer this follow-up. Please try again.' }, model: null };
-  } finally {
-    clearTimeout(timer);
+    return { answer: null, answerType: null, citations: [], uncertainty: [], status: { code: 'AI_UNAVAILABLE', message: 'The model service could not answer this follow-up. Please try again.' }, model: null };
   }
 }
-
 function createServer(dependencies = {}) {
   const getEvidence = dependencies.getRepositoryEvidence || getRepositoryEvidence;
   const getAnalysis = dependencies.analyzeEvidence || analyzeEvidence;
@@ -2554,6 +2637,7 @@ module.exports = {
   analyzeEvidence,
   answerAccountQuestion,
   answerIntelligenceFollowup,
+  answerIntelligenceDirectQuestion,
   validateIntelligenceChatAnswer,
   validateIntelligenceChatTextAnswer,
   collectIntelligenceChatSources,

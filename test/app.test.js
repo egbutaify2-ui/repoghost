@@ -1736,6 +1736,99 @@ test('all four developer-intelligence endpoints return structured evidence repor
 });
 
 
+
+test('answers which project matched a technology signal without waiting on the model', async () => {
+  let providerCalls = 0;
+  const report = {
+    kind: 'developer-assessment',
+    account: { login: 'egbutaify2-ui', url: 'https://github.com/egbutaify2-ui' },
+    demonstratedTechnologies: [
+      { technology: 'Supabase', repositoryCount: 1, sourceIds: ['snapshot-repository-7'] },
+    ],
+    sources: [
+      { id: 'account-profile', title: 'GitHub account @egbutaify2-ui', url: 'https://github.com/egbutaify2-ui' },
+      { id: 'snapshot-repository-7', type: 'repository', title: 'egbutaify2-ui/sanity-lenslink-agent', url: 'https://github.com/egbutaify2-ui/sanity-lenslink-agent' },
+    ],
+  };
+  const result = await answerIntelligenceFollowup({
+    kind: 'assessment',
+    inputs: { username: 'egbutaify2-ui', role: 'Software Engineer' },
+    report,
+  }, 'No, I saw 1 Supabase project, what project was that?', {
+    env: {},
+    fetchImpl: async () => {
+      providerCalls += 1;
+      throw new Error('The model should not be called for a direct source lookup.');
+    },
+  });
+  assert.equal(providerCalls, 0);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answerType, 'case_evidence');
+  assert.match(result.answer, /egbutaify2-ui\/sanity-lenslink-agent/);
+  assert.equal(result.citations[0].id, 'snapshot-repository-7');
+});
+
+test('answers line-of-code questions honestly when the investigation did not count source lines', async () => {
+  let providerCalls = 0;
+  const result = await answerIntelligenceFollowup({
+    kind: 'assessment',
+    inputs: { username: 'alpha', role: 'Software Engineer' },
+    report: {
+      kind: 'developer-assessment',
+      account: { login: 'alpha', url: 'https://github.com/alpha' },
+      demonstratedTechnologies: [],
+      sources: [],
+    },
+  }, 'Which project has more lines of code?', {
+    env: {},
+    fetchImpl: async () => {
+      providerCalls += 1;
+      throw new Error('The model should not be called for this direct limitation reply.');
+    },
+  });
+  assert.equal(providerCalls, 0);
+  assert.equal(result.answerType, 'general_context');
+  assert.match(result.answer, /did not count the lines of code/i);
+  assert.match(result.answer, /Which two projects should we compare first/i);
+});
+
+test('retries plain-text conversational mode when structured inference times out', async () => {
+  let calls = 0;
+  const result = await answerIntelligenceFollowup({
+    kind: 'health',
+    inputs: { repositoryUrl: 'https://github.com/alpha/mobile-app' },
+    report: {
+      kind: 'repository-health',
+      repository: { fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app' },
+      sources: [],
+    },
+  }, 'What is a release tag?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async (input, options) => {
+      calls += 1;
+      const request = JSON.parse(options.body);
+      if (calls === 1) {
+        assert.equal(request.response_format.type, 'json_object');
+        const timeout = new Error('simulated model timeout');
+        timeout.name = 'AbortError';
+        throw timeout;
+      }
+      assert.equal(request.response_format, undefined);
+      return responseJson({
+        model: 'test-followup-model',
+        choices: [{ message: { content:
+          'A release tag names a particular Git reference, often used to mark a version. This is general Git context, not evidence that this repository has a tag.\nAnswer-Type: general_context\nSources: none\nUncertainty: The report contains no release-tag evidence.' } }],
+      });
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answerType, 'general_context');
+  assert.match(result.answer, /release tag names a particular Git reference/);
+  assert.deepEqual(result.citations, []);
+});
+
 test('answers contextual intelligence follow-ups with citations from the stored public case', async () => {
   let requestBody;
   const report = {
