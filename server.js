@@ -2023,6 +2023,8 @@ function createServer(dependencies = {}) {
       return null;
     }
     record.expiresAt = Date.now() + INTELLIGENCE_CASE_TTL_MS;
+    intelligenceCaseCache.delete(caseId);
+    intelligenceCaseCache.set(caseId, record);
     return record;
   };
   const rememberDiscovery = (discovery) => {
