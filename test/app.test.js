@@ -2332,7 +2332,7 @@ test('answers TypeScript comparisons from language snapshots when the comparison
 
   assert.equal(providerCalls, 0);
   assert.ok(result.answer.trim());
-  assert.match(result.answer, /cannot tell us who has more knowledge/i);
+  assert.match(result.answer, /honestly say who has more TypeScript knowledge/i);
   assert.match(result.answer, /@alpha/);
   assert.match(result.answer, /@beta/);
   assert.equal(result.answerType, 'case_evidence');
