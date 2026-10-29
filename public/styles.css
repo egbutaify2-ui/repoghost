@@ -617,6 +617,120 @@ h1 { margin-bottom: 18px; font-size: clamp(44px, 5.3vw, 70px); line-height: 1.03
 .intel-snapshot-languages .intel-term-list { margin-top: 7px; }
 .intel-snapshot-title { color: #b9c8d5; font-size: 11px; margin: 13px 0 7px; }
 .intel-compare-profile .intel-empty { margin: 7px 0; padding: 10px; }
+
+/* A clear preliminary pick appears before the detailed side-by-side evidence. */
+.intel-verdict-card {
+  margin: 0 0 17px;
+  padding: 18px;
+  border: 1px solid #3f6d58;
+  border-left: 4px solid var(--mint);
+  background: linear-gradient(135deg, #13231d 0%, #0e1718 58%, #111820 100%);
+}
+.intel-verdict-card.no-clear {
+  border-color: #68583d;
+  border-left-color: var(--amber);
+  background: linear-gradient(135deg, #211d15 0%, #171714 58%, #111820 100%);
+}
+.intel-verdict-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.intel-verdict-outcome {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid #3f6d58;
+  color: var(--mint);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .09em;
+}
+.intel-verdict-card.no-clear .intel-verdict-outcome {
+  border-color: #68583d;
+  color: var(--amber);
+}
+.intel-verdict-card h3 {
+  margin: 15px 0 7px;
+  color: var(--mint);
+  font-size: clamp(18px, 2.8vw, 24px);
+  line-height: 1.35;
+  letter-spacing: -.025em;
+}
+.intel-verdict-card.no-clear h3 { color: var(--amber); }
+.intel-verdict-reason {
+  max-width: 900px;
+  margin: 0;
+  color: #d4ded9;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.intel-verdict-candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 15px 0 12px;
+}
+.intel-verdict-candidate {
+  min-width: 0;
+  border: 1px solid #2e3b3e;
+  background: rgba(5, 12, 13, .55);
+  padding: 12px;
+}
+.intel-verdict-candidate.is-preferred {
+  border-color: #4e8068;
+  box-shadow: inset 0 0 0 1px rgba(156, 235, 195, .08);
+}
+.intel-verdict-candidate-name {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.intel-verdict-candidate-name > span {
+  color: #839990;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .07em;
+}
+.intel-verdict-candidate.is-preferred .intel-verdict-candidate-name > span { color: var(--mint); }
+.intel-verdict-candidate-name > strong {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.intel-verdict-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.intel-verdict-metrics > div { min-width: 0; }
+.intel-verdict-metrics strong {
+  display: block;
+  color: #f0f4f1;
+  font-size: 20px;
+  line-height: 1.2;
+}
+.intel-verdict-metrics span {
+  display: block;
+  margin-top: 4px;
+  color: #899b93;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.intel-verdict-method,
+.intel-verdict-caveat {
+  margin: 9px 0 0;
+  color: #8fa198;
+  font-size: 10px;
+  line-height: 1.7;
+}
+.intel-verdict-caveat { color: #bac9c2; }
+
 .intel-criteria { margin-bottom: 15px; }
 .intel-criterion { border-top: 1px solid #26323d; padding: 13px 0; }
 .intel-criterion h4 { margin-bottom: 10px; }
@@ -661,6 +775,8 @@ h1 { margin-bottom: 18px; font-size: clamp(44px, 5.3vw, 70px); line-height: 1.03
   .intel-profile-link { display: inline-block; margin-top: 10px; }
   .intel-compare-grid { grid-template-columns: minmax(0, 1fr); }
   .intel-criterion-values { grid-template-columns: minmax(0, 1fr); }
+  .intel-verdict-candidates { grid-template-columns: minmax(0, 1fr); }
+  .intel-verdict-card { padding: 15px; }
   .intel-snapshot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
