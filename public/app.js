@@ -785,7 +785,167 @@ function renderIntelligenceChatMessage(role, message, citations = [], uncertaint
   return article;
 }
 
-function attachIntelligenceChat(output, workflow, caseId, caseInputs) {
+
+function buildLocalIntelligenceFallback(report, questionInput) {
+  const question = String(questionInput || '').trim();
+  const q = question.toLowerCase().replace(/[^a-z0-9+#.]+/g, ' ').trim();
+  const citations = [];
+  const addCitation = (source, prefix) => {
+    if (!source || typeof source.url !== 'string' || !intelSafeUrl(source.url) || !/^https:\/\/github\.com\//i.test(source.url)) return;
+    if (citations.some((item) => item.url === source.url)) return;
+    citations.push({ id: String(prefix || '') + String(source.id || citations.length + 1), title: String(source.title || source.fullName || 'Public GitHub source'), url: source.url });
+  };
+  const addSideSources = (side, prefix) => {
+    const projects = Array.isArray(side && side.relevantProjects) ? side.relevantProjects : [];
+    const sources = Array.isArray(side && side.sources) ? side.sources : [];
+    for (const project of projects.filter((item) => item && Array.isArray(item.matchedTerms) && item.matchedTerms.length).slice(0, 3)) {
+      const src = sources.find((item) => item && Array.isArray(project.sourceIds) && project.sourceIds.includes(item.id));
+      addCitation(src || { id: project.fullName, title: project.fullName, url: project.url }, prefix);
+    }
+    const profile = sources.find((item) => item && item.type === 'profile' && item.url) ||
+      sources.find((item) => item && item.url);
+    if (profile) addCitation(profile, prefix);
+    else if (side && side.account && side.account.url) addCitation({ id: 'profile', title: 'GitHub profile @' + side.account.login, url: side.account.url }, prefix);
+  };
+  const reply = (answer, answerType, uncertainty = []) => ({
+    answer: String(answer || 'I’m still here. I couldn’t establish a definite answer from this turn, but we can keep investigating.'),
+    answerType: answerType || 'conversation',
+    citations: citations.slice(0, 6),
+    uncertainty: uncertainty.slice(0, 4),
+  });
+
+  if (!report || typeof report !== 'object') {
+    return reply('I’m still here. The response service stumbled and the case details are not available in this turn. I can still explain the topic generally, or you can rerun the investigation to restore its evidence.', 'conversation');
+  }
+  if (/\b(?:hi|hello|hey|thanks|thank you|wow|nice)\b/i.test(question) && question.split(/\s+/).length <= 8) {
+    return reply(/thanks|thank you/i.test(question)
+      ? 'Anytime! The case is still open. Ask me about a project, a signal, which profile has the stronger evidence, or what the report cannot prove.'
+      : 'I’m here. We can keep investigating projects, compare visible signals, or talk through what the report cannot establish.', 'conversation');
+  }
+
+  if (report.kind === 'developer-comparison') {
+    const left = report.left || {};
+    const right = report.right || {};
+    const leftLogin = String(left.account && left.account.login || 'left profile');
+    const rightLogin = String(right.account && right.account.login || 'right profile');
+    const verdict = report.verdict || {};
+    const isWinnerQuestion = /\bwho\s+(?:wins?|won|comes?\s+out\s+on\s+top)\b|\bwho\s+(?:would|do)\s+you\s+(?:pick|prefer)\b|\bwho\s+is\s+(?:better|stronger)\b|\bwho\s+do\s+you\s+prefer\b|\bwho\s+would\s+you\s+choose\b/i.test(question);
+    if (isWinnerQuestion) {
+      addSideSources(left, 'left-');
+      addSideSources(right, 'right-');
+      if (verdict.outcome === 'left' || verdict.outcome === 'right') {
+        const winner = verdict.outcome === 'left' ? leftLogin : rightLogin;
+        return reply('**Preliminary pick to investigate first: @' + winner + '.** ' + String(verdict.reason || report.summary || 'The returned role-related public signals lean toward this profile.') +
+          ' This is a shortlist signal under the report’s public-metadata method, not proof that this person is the better engineer. Push dates, stars, repository totals, and keyword matches do not establish proficiency, authorship, code quality, or job performance. Inspect both candidates’ cited code and tests, then give them the same role-specific practical task.',
+          citations.length ? 'case_evidence' : 'general_context',
+          ['This comparison is not a validated engineering-skills assessment.']);
+      }
+      return reply('**No clear winner from the current evidence.** ' + String(verdict.reason || report.summary || 'The returned public snapshots do not distinguish these profiles reliably.') +
+        ' I would not break the tie using push recency, stars, or repository totals. Compare one relevant implementation from each candidate and give both the same practical task.',
+        citations.length ? 'case_evidence' : 'general_context',
+        ['This report cannot establish private work, individual authorship, code quality, or role performance.']);
+    }
+
+    const techAliases = [
+      { name: 'React Native', aliases: ['react native', 'react-native'] },
+      { name: 'TypeScript', aliases: ['typescript', 'type script'] },
+      { name: 'JavaScript', aliases: ['javascript'] },
+      { name: 'Next.js', aliases: ['next.js', 'nextjs'] },
+      { name: 'Node.js', aliases: ['node.js', 'nodejs'] },
+      { name: 'PostgreSQL', aliases: ['postgresql', 'postgres'] },
+      { name: 'Supabase', aliases: ['supabase'] }, { name: 'Appwrite', aliases: ['appwrite'] },
+      { name: 'Prisma', aliases: ['prisma'] }, { name: 'GraphQL', aliases: ['graphql'] },
+      { name: 'Docker', aliases: ['docker'] }, { name: 'Python', aliases: ['python'] },
+      { name: 'OpenAI', aliases: ['openai'] }, { name: 'LLM', aliases: ['llm'] },
+      { name: 'Go', aliases: ['golang'] }, { name: 'Java', aliases: ['java'] },
+      { name: 'SQL', aliases: ['sql'] }, { name: 'React', aliases: ['react'] }, { name: 'Mojo', aliases: ['mojo'] },
+    ];
+    const asksSkillComparison = /\b(?:who|which|more|better|stronger|knowledge|know|knows|skill|skills|proficien|experienced|experience|expert)\b/i.test(question);
+    const askedTech = asksSkillComparison ? techAliases.find((tech) => tech.aliases.some((alias) => (' ' + q + ' ').includes(' ' + alias.toLowerCase().replace(/[^a-z0-9+#.]+/g, ' ').trim() + ' '))) : null;
+    if (askedTech) {
+      const tech = askedTech.name;
+      const readSignal = (side) => {
+        const rows = Array.isArray(side && side.demonstratedTechnologies) ? side.demonstratedTechnologies : [];
+        const found = rows.find((item) => String(item && item.technology || '').toLowerCase() === tech.toLowerCase());
+        const langs = Array.isArray(side && side.languagesInReturnedSnapshot) ? side.languagesInReturnedSnapshot : [];
+        const languageFound = langs.some((item) => String(item).toLowerCase() === tech.toLowerCase());
+        const projects = (Array.isArray(side && side.relevantProjects) ? side.relevantProjects : [])
+          .filter((item) => (item.matchedTerms || []).some((term) => String(term).toLowerCase().includes(tech.toLowerCase())));
+        return { visible: Boolean(found || languageFound || projects.length), count: found && Number.isFinite(found.repositoryCount) ? found.repositoryCount : projects.length };
+      };
+      const ls = readSignal(left), rs = readSignal(right);
+      addSideSources(left, 'left-');
+      addSideSources(right, 'right-');
+      const leftText = ls.visible ? (ls.count > 0 ? ls.count + ' repository-level signal(s)' : 'a visible signal') : 'no matching signal surfaced in this sample';
+      const rightText = rs.visible ? (rs.count > 0 ? rs.count + ' repository-level signal(s)' : 'a visible signal') : 'no matching signal surfaced in this sample';
+      if (ls.visible && rs.visible) {
+        const more = ls.count > rs.count ? '@' + leftLogin : rs.count > ls.count ? '@' + rightLogin : '';
+        return reply('I can compare the **visible ' + tech + ' evidence**, but this report cannot tell us who has more knowledge. @' + leftLogin + ' has ' + leftText + '; @' + rightLogin + ' has ' + rightText + '.' +
+          (more ? ' The snapshot has more ' + tech + ' footprints for ' + more + ', so that profile is the stronger evidence lead to inspect first—not a proven skill winner.' : ' The visible signal counts are tied, so neither profile has an evidence lead for this technology.') +
+          ' Actual proficiency needs a code review and the same practical task for both candidates. For ' + tech + ', inspect design choices, edge cases, error handling, and tests.',
+          citations.length ? 'case_evidence' : 'general_context',
+          ['Metadata and README mentions show visibility, not depth, correctness, or independent proficiency.']);
+      }
+      if (ls.visible || rs.visible) {
+        const visibleLogin = ls.visible ? leftLogin : rightLogin;
+        const otherLogin = ls.visible ? rightLogin : leftLogin;
+        return reply('The returned public snapshot shows a ' + tech + ' signal for @' + visibleLogin + ' (' + (ls.visible ? leftText : rightText) + ') but ' +
+          (ls.visible ? 'no matching signal for @' + otherLogin + ' (' + rightText + ')' : '@' + otherLogin + ' has ' + leftText) +
+          '. That makes @' + visibleLogin + ' the stronger visible-evidence lead to inspect for ' + tech + '. It does **not** prove they know the technology better, and the missing signal does not prove the other person lacks the skill. Review actual code and use the same practical task.',
+          citations.length ? 'case_evidence' : 'general_context',
+          ['The comparison is limited to returned public repositories and bounded samples.']);
+      }
+      return reply('**No ' + tech + ' knowledge winner can be established from this snapshot.** It did not surface a clear ' + tech + ' signal for either @' + leftLogin + ' or @' + rightLogin +
+        '. That is an evidence gap, not proof either person lacks the skill. To compare them, inspect public implementations and give both the same task, then evaluate correctness, design choices, error handling, and tests.',
+        citations.length ? 'case_evidence' : 'general_context',
+        ['This public snapshot does not measure proficiency.']);
+    }
+
+    addSideSources(left, 'left-');
+    addSideSources(right, 'right-');
+    return reply('I’m still with you. ' + (verdict.headline ? verdict.headline + '. ' : '') +
+      String(verdict.reason || report.summary || 'This comparison covers the returned public repository snapshots.') +
+      ' This is a preliminary evidence-based comparison, not a verified skill ranking. You can ask about one of the linked projects, a specific technology, or what evidence would be needed to judge that claim.',
+      citations.length ? 'case_evidence' : 'general_context',
+      [String(verdict.caveat || 'The comparison cannot establish individual authorship, private work, code quality, or role performance.')]);
+  }
+
+  if (report.kind === 'developer-assessment') {
+    const projects = Array.isArray(report.relevantProjects) ? report.relevantProjects.filter((item) => item && Array.isArray(item.matchedTerms) && item.matchedTerms.length) : [];
+    const names = projects.slice(0, 3).map((item) => item.fullName).filter(Boolean);
+    const sources = Array.isArray(report.sources) ? report.sources : [];
+    for (const project of projects.slice(0, 4)) {
+      const source = sources.find((item) => item && Array.isArray(project.sourceIds) && project.sourceIds.includes(item.id));
+      addCitation(source || { id: project.fullName, title: project.fullName, url: project.url }, '');
+    }
+    if (!citations.length && report.account) addCitation({ id: 'profile', title: 'GitHub profile @' + report.account.login, url: report.account.url }, '');
+    return reply('I’m still here. ' + String(report.summary || 'The assessment contains a bounded snapshot of public GitHub evidence.') +
+      (names.length ? ' The report surfaced these role-related project leads: ' + names.join(', ') + '.' : ' It did not surface a strong role-related project lead in the returned sample.') +
+      ' This snapshot can guide what to inspect next, but it cannot prove skill or individual authorship. Which project or signal should we dig into first?',
+      citations.length ? 'case_evidence' : 'general_context',
+      ['The assessment covers only returned public repository metadata and bounded README samples.']);
+  }
+  if (report.kind === 'repository-health' || report.kind === 'health') {
+    const repo = report.repository || {};
+    const signals = Array.isArray(report.signals) ? report.signals.slice(0, 3) : [];
+    for (const source of (Array.isArray(report.sources) ? report.sources : []).slice(0, 4)) addCitation(source, '');
+    return reply('I’m still here with ' + String(repo.fullName || 'this repository') + '. ' +
+      (signals.length ? signals.map((item) => String(item.label || 'Signal') + ': ' + String(item.detail || '')).join(' ') : String(report.summary || 'The current report is a bounded public repository snapshot.')) +
+      ' These are leads to inspect, not a complete audit. Which signal should we examine next?',
+      citations.length ? 'case_evidence' : 'general_context',
+      ['This answer uses only the current bounded public repository snapshot.']);
+  }
+  const recommendations = Array.isArray(report.recommendations) ? report.recommendations.slice(0, 3) : [];
+  for (const source of (Array.isArray(report.sources) ? report.sources : []).slice(0, 4)) addCitation(source, '');
+  return reply('I’m still here. ' + (recommendations.length
+    ? 'The current report suggests: ' + recommendations.map((item) => String(item.title || item.repository || item.name || 'a next step')).join(', ') + '.'
+    : String(report.summary || 'The report has not produced a strong next-step recommendation yet.')) +
+    ' I can explain why a recommendation fits, answer the topic generally, or help identify the evidence needed for the next step.',
+    citations.length ? 'case_evidence' : 'general_context',
+    ['This answer is limited to the current report and does not invent missing facts.']);
+}
+
+function attachIntelligenceChat(output, workflow, caseId, caseInputs, caseReport) {
   if (!output || !caseId) return;
   let activeCaseId = caseId;
   const headings = {
@@ -848,36 +1008,40 @@ function attachIntelligenceChat(output, workflow, caseId, caseInputs) {
       let payload;
       try { payload = await response.json(); }
       catch { throw new Error('The archive returned a response RepoGhost could not read. Please try again.'); }
-      if (!response.ok) throw new Error(payload.error && payload.error.message || 'The follow-up failed (HTTP ' + response.status + ').');
+      if (!response.ok) {
+        pending.remove();
+        const fallback = buildLocalIntelligenceFallback(caseReport, question);
+        const answer = fallback.answer + ' (The response service had a problem, so I answered from the report already on this page.)';
+        messages.appendChild(renderIntelligenceChatMessage('assistant', answer, fallback.citations, fallback.uncertainty, false, fallback.answerType));
+        conversationHistory.push({ role: 'assistant', content: answer });
+        if (conversationHistory.length > 8) conversationHistory.splice(0, conversationHistory.length - 8);
+        return;
+      }
       if (typeof payload.caseId === 'string' && payload.caseId) activeCaseId = payload.caseId;
       if (payload.recovered && caseStatus) caseStatus.textContent = 'CASE RESTORED';
       pending.remove();
 
       // A provider failure is not part of the conversation. Keep it out of history,
       // preserve the user's question for retry, and let the thread continue cleanly.
-      if (!payload.answer && payload.status && payload.status.code !== 'AI_READY') {
-        const code = payload.status.code;
-        const retryable = ['AI_TIMEOUT', 'AI_INVALID_OUTPUT', 'AI_UNAVAILABLE', 'AI_RATE_LIMIT', 'AI_PROVIDER_ERROR'].includes(code);
-        const message = code === 'AI_TIMEOUT'
-          ? 'I’m still here, but my reply timed out. Your investigation is intact. I’ve kept your question below — press Ask to retry, or shorten it.'
-          : (payload.status.message || 'I could not answer that just now. Your investigation is still open.');
-        messages.appendChild(renderIntelligenceChatMessage('assistant', message, [], [], false, 'conversation'));
-        const lastTurn = conversationHistory[conversationHistory.length - 1];
-        if (lastTurn && lastTurn.role === 'user' && lastTurn.content === question) conversationHistory.pop();
-        if (retryable) input.value = question;
-        messages.scrollTop = messages.scrollHeight;
+      if (!payload.answer || !String(payload.answer).trim()) {
+        const fallback = buildLocalIntelligenceFallback(caseReport, question);
+        const answer = fallback.answer + ' (I used the evidence already loaded in this case rather than leave you without a reply.)';
+        messages.appendChild(renderIntelligenceChatMessage('assistant', answer, fallback.citations, fallback.uncertainty, false, fallback.answerType));
+        conversationHistory.push({ role: 'assistant', content: answer });
+        if (conversationHistory.length > 8) conversationHistory.splice(0, conversationHistory.length - 8);
         return;
       }
 
-      const answer = payload.answer || (payload.status && payload.status.message) || 'The ghost could not answer this follow-up.';
+      const answer = payload.answer;
       messages.appendChild(renderIntelligenceChatMessage('assistant', answer, payload.citations, payload.uncertainty, false, payload.answerType));
       conversationHistory.push({ role: 'assistant', content: answer });
       if (conversationHistory.length > 8) conversationHistory.splice(0, conversationHistory.length - 8);
     } catch (error) {
       pending.remove();
-      const message = error.message || 'The follow-up could not be completed. Please try again.';
-      messages.appendChild(renderIntelligenceChatMessage('assistant', message));
-      conversationHistory.push({ role: 'assistant', content: message });
+      const fallback = buildLocalIntelligenceFallback(caseReport, question);
+      const answer = fallback.answer + ' (The answer service was unavailable, so I used the report already loaded in this case.)';
+      messages.appendChild(renderIntelligenceChatMessage('assistant', answer, fallback.citations, fallback.uncertainty, false, fallback.answerType));
+      conversationHistory.push({ role: 'assistant', content: answer });
       if (conversationHistory.length > 8) conversationHistory.splice(0, conversationHistory.length - 8);
     } finally {
       messages.scrollTop = messages.scrollHeight;
@@ -923,7 +1087,7 @@ function bindIntelligenceForm(formId, endpoint, responseKey, payloadBuilder, ren
         throw new Error('The server did not return an active investigation case for follow-up chat.');
       }
       output.innerHTML = renderer(payload[responseKey]);
-      attachIntelligenceChat(output, responseKey, payload.caseId, investigationInputs);
+      attachIntelligenceChat(output, responseKey, payload.caseId, investigationInputs, payload[responseKey]);
     } catch (error) {
       output.innerHTML = renderIntelError(error.message || 'Something went wrong. Please try again.');
     } finally {
