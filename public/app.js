@@ -830,6 +830,23 @@ function attachIntelligenceChat(output, workflow, caseId, caseInputs) {
       if (typeof payload.caseId === 'string' && payload.caseId) activeCaseId = payload.caseId;
       if (payload.recovered && caseStatus) caseStatus.textContent = 'CASE RESTORED';
       pending.remove();
+
+      // A provider failure is not part of the conversation. Keep it out of history,
+      // preserve the user's question for retry, and let the thread continue cleanly.
+      if (!payload.answer && payload.status && payload.status.code !== 'AI_READY') {
+        const code = payload.status.code;
+        const retryable = ['AI_TIMEOUT', 'AI_INVALID_OUTPUT', 'AI_UNAVAILABLE', 'AI_RATE_LIMIT', 'AI_PROVIDER_ERROR'].includes(code);
+        const message = code === 'AI_TIMEOUT'
+          ? 'I’m still here, but my reply timed out. Your investigation is intact. I’ve kept your question below — press Ask to retry, or shorten it.'
+          : (payload.status.message || 'I could not answer that just now. Your investigation is still open.');
+        messages.appendChild(renderIntelligenceChatMessage('assistant', message, [], [], false, 'conversation'));
+        const lastTurn = conversationHistory[conversationHistory.length - 1];
+        if (lastTurn && lastTurn.role === 'user' && lastTurn.content === question) conversationHistory.pop();
+        if (retryable) input.value = question;
+        messages.scrollTop = messages.scrollHeight;
+        return;
+      }
+
       const answer = payload.answer || (payload.status && payload.status.message) || 'The ghost could not answer this follow-up.';
       messages.appendChild(renderIntelligenceChatMessage('assistant', answer, payload.citations, payload.uncertainty, false, payload.answerType));
       conversationHistory.push({ role: 'assistant', content: answer });
