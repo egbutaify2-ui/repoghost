@@ -1748,6 +1748,7 @@ test('answers contextual intelligence follow-ups with citations from the stored 
         model: 'test-followup-model',
         choices: [{ message: { content: JSON.stringify({
           answer: 'The returned project description explicitly says it is a React Native mobile app using Expo.',
+          answerType: 'case_evidence',
           sourceIds: ['project-readme'],
           uncertainty: ['The report does not establish who authored each line of code.'],
         }) } }],
@@ -1756,7 +1757,7 @@ test('answers contextual intelligence follow-ups with citations from the stored 
   });
   assert.equal(requestBody.response_format.type, 'json_object');
   assert.equal(requestBody.model, DEFAULT_MODEL);
-  assert.match(requestBody.messages[0].content, /Conversation history can resolve follow-up references/);
+  assert.match(requestBody.messages[0].content, /Conversation history helps resolve intent but is not evidence/);
   assert.match(requestBody.messages[1].content, /What supports the React Native match/);
   assert.match(requestBody.messages[1].content, /project-readme/);
   assert.equal(result.status.code, 'AI_READY');
@@ -1781,6 +1782,7 @@ test('rejects intelligence follow-up citations that are not in the investigated 
       model: 'test-followup-model',
       choices: [{ message: { content: JSON.stringify({
         answer: 'The project is secure.',
+        answerType: 'case_evidence',
         sourceIds: ['made-up-source'],
         uncertainty: [],
       }) } }],
@@ -1789,6 +1791,137 @@ test('rejects intelligence follow-up citations that are not in the investigated 
   assert.equal(result.status.code, 'AI_INVALID_OUTPUT');
   assert.equal(result.answer, null);
   assert.deepEqual(result.citations, []);
+});
+
+
+test('keeps intelligence chat conversational when a case has no usable evidence sources', async () => {
+  let requestBody;
+  const report = {
+    kind: 'developer-assessment',
+    account: { login: 'alpha', url: 'https://github.com/alpha' },
+    role: 'AI Engineer',
+    summary: 'No role-relevant public project evidence was found in this report.',
+    sources: [],
+    relevantProjects: [],
+    limitations: ['No usable repository detail was collected for this case.'],
+  };
+  const generalContext = await answerIntelligenceFollowup({
+    kind: 'assessment',
+    inputs: { username: 'alpha', role: 'AI Engineer' },
+    report,
+  }, 'What does a GitHub fork mean generally?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async (input, options) => {
+      requestBody = JSON.parse(options.body);
+      return responseJson({
+        model: 'test-followup-model',
+        choices: [{ message: { content: JSON.stringify({
+          answer: 'In general, a fork is a separate GitHub repository copied from another repository. That is general GitHub context, not a finding about @alpha. Want me to explain how to trace the original project?',
+          answerType: 'general_context',
+          sourceIds: [],
+          uncertainty: ['This case has no public source links to establish anything about @alpha’s repositories.'],
+        }) } }],
+      });
+    },
+  });
+  assert.equal(requestBody.response_format.type, 'json_object');
+  assert.match(requestBody.messages[0].content, /Missing GitHub evidence is never, by itself, a reason to refuse to chat/);
+  assert.match(requestBody.messages[1].content, /Missing evidence is not a reason to stop replying/);
+  assert.ok(requestBody.messages[1].content.includes('"sources":[]'));
+  assert.equal(generalContext.status.code, 'AI_READY');
+  assert.equal(generalContext.answerType, 'general_context');
+  assert.match(generalContext.answer, /In general/);
+  assert.deepEqual(generalContext.citations, []);
+  assert.equal(generalContext.uncertainty.length, 1);
+
+  const conversation = await answerIntelligenceFollowup({
+    kind: 'assessment',
+    inputs: { username: 'alpha', role: 'AI Engineer' },
+    report,
+  }, 'Can you tell me more?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    history: [
+      { role: 'user', content: 'What does a GitHub fork mean generally?' },
+      { role: 'assistant', content: generalContext.answer },
+    ],
+    fetchImpl: async (input, options) => {
+      const request = JSON.parse(options.body);
+      assert.match(request.messages[1].content, /Can you tell me more/);
+      assert.match(request.messages[1].content, /What does a GitHub fork mean generally/);
+      return responseJson({
+        model: 'test-followup-model',
+        choices: [{ message: { content: JSON.stringify({
+          answer: 'Sure. Developers commonly use forks to experiment without changing the upstream repository. To trace a particular project, we would need its public repository URL or fork metadata.',
+          answerType: 'conversation',
+          sourceIds: [],
+          uncertainty: [],
+        }) } }],
+      });
+    },
+  });
+  assert.equal(conversation.status.code, 'AI_READY');
+  assert.equal(conversation.answerType, 'conversation');
+  assert.match(conversation.answer, /Sure/);
+  assert.deepEqual(conversation.citations, []);
+});
+
+test('accepts a plain-text general-context fallback without forcing fake citations', async () => {
+  const report = {
+    kind: 'repository-health',
+    repository: { fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app' },
+    summary: 'Repository evidence was unavailable.',
+    sources: [],
+  };
+  let calls = 0;
+  const result = await answerIntelligenceFollowup({
+    kind: 'health',
+    inputs: { repositoryUrl: 'https://github.com/alpha/mobile-app' },
+    report,
+  }, 'What is a release tag?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return responseJson({ choices: [{ message: { content: 'not json at all' } }] });
+      }
+      return responseJson({
+        choices: [{ message: { content:
+          'A release tag is a named Git reference that marks a particular commit, often used to identify a version. This is general Git context, not evidence that this repository has a release tag.\nAnswer-Type: general_context\nSources: none\nUncertainty: The case contains no usable release records.' } }],
+      });
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answerType, 'general_context');
+  assert.match(result.answer, /release tag is a named Git reference/);
+  assert.deepEqual(result.citations, []);
+  assert.match(result.uncertainty[0], /no usable release records/);
+});
+
+test('still requires valid citations for claims classified as case evidence', async () => {
+  const report = {
+    kind: 'repository-health',
+    repository: { fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app' },
+    sources: [],
+  };
+  const result = await answerIntelligenceFollowup({
+    kind: 'health',
+    inputs: { repositoryUrl: 'https://github.com/alpha/mobile-app' },
+    report,
+  }, 'Is the project secure?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    fetchImpl: async () => responseJson({
+      choices: [{ message: { content: JSON.stringify({
+        answer: 'The project is secure.',
+        answerType: 'case_evidence',
+        sourceIds: [],
+        uncertainty: [],
+      }) } }],
+    }),
+  });
+  assert.equal(result.status.code, 'AI_INVALID_OUTPUT');
+  assert.equal(result.answer, null);
 });
 
 test('collects only usable GitHub source links for contextual follow-up citations', () => {
