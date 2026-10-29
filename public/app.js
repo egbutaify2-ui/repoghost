@@ -740,14 +740,21 @@ function renderIntelRecommendations(recommendations) {
 
 
 
-function renderIntelligenceChatMessage(role, message, citations = [], uncertainty = [], pending = false) {
+function renderIntelligenceChatMessage(role, message, citations = [], uncertainty = [], pending = false, answerType = '') {
   const article = document.createElement('article');
   article.className = 'intel-chat-message ' + (role === 'user' ? 'user' : 'assistant') + (pending ? ' pending' : '');
   const label = role === 'user' ? 'YOU' : 'THE GHOST';
   const sourceList = Array.isArray(citations) ? citations.filter((source) => source && intelSafeUrl(source.url)).slice(0, 6) : [];
   const uncertaintyList = Array.isArray(uncertainty) ? uncertainty.filter((item) => typeof item === 'string' && item.trim()).slice(0, 4) : [];
+  const answerKindLabel = role === 'assistant' && !pending
+    ? answerType === 'case_evidence' ? 'CASE EVIDENCE'
+      : answerType === 'general_context' ? 'GENERAL CONTEXT · NOT VERIFIED BY THIS CASE'
+        : answerType === 'conversation' ? 'CONVERSATION'
+          : ''
+    : '';
   article.innerHTML = '<span class="intel-chat-message-label">' + label + '</span><p>' +
     escapeHtml(String(message || '')).replace(/\n/g, '<br>') + '</p>' +
+    (answerKindLabel ? '<span class="intel-chat-answer-kind ' + escapeHtml(answerType) + '">' + escapeHtml(answerKindLabel) + '</span>' : '') +
     (sourceList.length ? '<div class="intel-chat-citations"><span>TRACES</span>' + sourceList.map((source) =>
       '<a href="' + escapeHtml(intelSafeUrl(source.url)) + '" target="_blank" rel="noopener noreferrer">' +
       escapeHtml(source.title || source.id || 'GitHub source') + ' ↗</a>').join('') + '</div>' : '') +
@@ -814,7 +821,7 @@ function attachIntelligenceChat(output, workflow, caseId) {
       if (!response.ok) throw new Error(payload.error && payload.error.message || 'The follow-up failed (HTTP ' + response.status + ').');
       pending.remove();
       const answer = payload.answer || (payload.status && payload.status.message) || 'The ghost could not answer this follow-up.';
-      messages.appendChild(renderIntelligenceChatMessage('assistant', answer, payload.citations, payload.uncertainty));
+      messages.appendChild(renderIntelligenceChatMessage('assistant', answer, payload.citations, payload.uncertainty, false, payload.answerType));
       conversationHistory.push({ role: 'assistant', content: answer });
       if (conversationHistory.length > 8) conversationHistory.splice(0, conversationHistory.length - 8);
     } catch (error) {
