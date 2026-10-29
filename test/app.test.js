@@ -1706,6 +1706,7 @@ test('all four developer-intelligence endpoints return structured evidence repor
     },
     answerIntelligenceFollowup: async (caseRecord, question, options) => {
       followupCalls.push({ caseRecord, question, options });
+      if (question === 'Throw to verify fallback') throw new Error('simulated answer-generation failure');
       return {
         answer: 'The stored case says this project matches the requested role.',
         citations: [],
@@ -1744,6 +1745,15 @@ test('all four developer-intelligence endpoints return structured evidence repor
   assert.equal(followupCalls[0].caseRecord.inputs.username, 'alpha');
   assert.equal(followupCalls[0].question, 'Which project matched the role?');
   assert.equal(followupCalls[0].options.history[0].content, 'What did you find?');
+
+  const handlerFallback = await post('/api/intelligence/ask', {
+    caseId: assessment.payload.caseId,
+    question: 'Throw to verify fallback',
+  });
+  assert.equal(handlerFallback.response.status, 200);
+  assert.equal(handlerFallback.payload.status.code, 'AI_FALLBACK');
+  assert.ok(handlerFallback.payload.answer);
+  assert.doesNotMatch(handlerFallback.payload.answer, /simulated answer-generation failure|AI_INVALID_OUTPUT|model could not provide/i);
 
   const expiredCase = await post('/api/intelligence/ask', {
     caseId: 'expired-case',
