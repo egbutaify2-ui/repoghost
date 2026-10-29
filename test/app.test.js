@@ -1696,9 +1696,23 @@ test('all four developer-intelligence endpoints return structured evidence repor
   assert.equal(followupCalls[0].question, 'Which project matched the role?');
   assert.equal(followupCalls[0].options.history[0].content, 'What did you find?');
 
-  const expiredCase = await post('/api/intelligence/ask', { caseId: 'expired-case', question: 'What did you find?' });
-  assert.equal(expiredCase.response.status, 410);
-  assert.equal(expiredCase.payload.error.code, 'INTELLIGENCE_CASE_EXPIRED');
+  const expiredCase = await post('/api/intelligence/ask', {
+    caseId: 'expired-case',
+    workflow: 'assessment',
+    inputs: { username: 'alpha', role: 'React Native Engineer', context: '' },
+    question: 'What did you find?',
+    history: [
+      { role: 'user', content: 'What did you find?' },
+      { role: 'assistant', content: 'One React Native project.' },
+    ],
+  });
+  assert.equal(expiredCase.response.status, 200);
+  assert.equal(expiredCase.payload.recovered, true);
+  assert.equal(typeof expiredCase.payload.caseId, 'string');
+  assert.notEqual(expiredCase.payload.caseId, 'expired-case');
+  assert.equal(followupCalls[1].caseRecord.kind, 'assessment');
+  assert.equal(followupCalls[1].caseRecord.inputs.username, 'alpha');
+  assert.match(expiredCase.payload.answer, /stored case/);
 
   const comparison = await post('/api/intelligence/compare', { usernameA: 'alpha', usernameB: 'beta', goal: 'React Native Engineer' });
   assert.equal(comparison.response.status, 200);

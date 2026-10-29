@@ -2182,6 +2182,76 @@ function createServer(dependencies = {}) {
     }
     return value.trim();
   };
+  const rebuildIntelligenceCase = async (workflow, rawInputs) => {
+    if (!rawInputs || typeof rawInputs !== 'object' || Array.isArray(rawInputs)) {
+      throw new HttpError(400, 'INVALID_INTELLIGENCE_INPUT', 'The investigation details needed to restore this chat are missing. Please rerun the investigation once.');
+    }
+
+    if (workflow === 'assessment') {
+      const username = parseGithubAccountName(rawInputs.username ?? rawInputs.account);
+      const role = requiredText(rawInputs.role, 'a target role or use case', 120);
+      const context = typeof rawInputs.context === 'string' && rawInputs.context.trim()
+        ? requiredText(rawInputs.context, 'evaluation context', 500)
+        : '';
+      const result = await collectRoleAssessment(username, role, context, 3);
+      return { kind: workflow, inputs: { username, role, context }, report: result.assessment };
+    }
+
+    if (workflow === 'comparison') {
+      const usernameA = parseGithubAccountName(rawInputs.usernameA ?? rawInputs.leftUsername);
+      const usernameB = parseGithubAccountName(rawInputs.usernameB ?? rawInputs.rightUsername);
+      if (usernameA.toLowerCase() === usernameB.toLowerCase()) {
+        throw new HttpError(400, 'SAME_ACCOUNT_COMPARISON', 'Enter two different GitHub accounts to restore this comparison.');
+      }
+      const goal = requiredText(rawInputs.goal, 'a comparison role or objective', 160);
+      const left = await collectRoleAssessment(usernameA, goal, '', 2);
+      const right = await collectRoleAssessment(usernameB, goal, '', 2);
+      const report = intelligence.buildDeveloperComparison(left.assessment, right.assessment, goal);
+      report.collectionWarnings = [
+        ...left.assessment.collectionWarnings.map((warning) => ({ side: 'left', ...warning })),
+        ...right.assessment.collectionWarnings.map((warning) => ({ side: 'right', ...warning })),
+      ];
+      return { kind: workflow, inputs: { usernameA, usernameB, goal }, report };
+    }
+
+    if (workflow === 'health') {
+      const repositoryUrl = requiredText(rawInputs.repositoryUrl, 'a public GitHub repository URL', 2048);
+      const evidence = await getCachedRepositoryEvidence(repositoryUrl);
+      const report = intelligence.buildRepositoryHealth(evidence);
+      return { kind: workflow, inputs: { repositoryUrl }, report };
+    }
+
+    if (workflow === 'recommendations') {
+      const username = parseGithubAccountName(rawInputs.username ?? rawInputs.account);
+      const goal = requiredText(rawInputs.goal, 'a goal or use case', 240);
+      const discovery = await discover(username, { fetchImpl });
+      const ranked = intelligence.rankRepositories(discovery.repositories, goal)
+        .filter((item) => item.score > 0)
+        .slice(0, 3);
+      const detailedEvidence = [];
+      const warnings = [];
+      for (const item of ranked.slice(0, 2)) {
+        try {
+          detailedEvidence.push(await getCachedRepositoryEvidence(item.repository.url));
+        } catch (error) {
+          warnings.push({
+            repository: item.repository.fullName,
+            code: error && typeof error.code === 'string' ? error.code : 'EVIDENCE_UNAVAILABLE',
+            message: 'Detailed issue and README evidence could not be collected for this candidate.',
+          });
+        }
+      }
+      const report = intelligence.buildRepositoryRecommendations(discovery, goal, detailedEvidence);
+      report.collectionWarnings = warnings;
+      if (discovery.limitReached) {
+        report.limitations.push('The account returned a capped repository list; candidates outside this list were not considered.');
+      }
+      return { kind: workflow, inputs: { username, goal }, report };
+    }
+
+    throw new HttpError(400, 'INVALID_INTELLIGENCE_WORKFLOW', 'RepoGhost could not identify which investigation to restore. Rerun that investigation once.');
+  };
+
   return http.createServer(async (req, res) => {
     const requestId = randomUUID();
     let requestUrl;
@@ -2314,17 +2384,30 @@ function createServer(dependencies = {}) {
       }
       try {
         if (pathname === '/api/intelligence/ask') {
-          const caseId = requiredText(body.caseId, 'an active investigation case', 64);
+          const caseId = requiredText(body.caseId, 'an investigation case ID', 64);
           const question = validateAccountQuestion(body.question);
-          const caseRecord = getIntelligenceCase(caseId);
+          let activeCaseId = caseId;
+          let caseRecord = getIntelligenceCase(caseId);
+          let recovered = false;
+
           if (!caseRecord) {
-            throw new HttpError(410, 'INTELLIGENCE_CASE_EXPIRED', 'This investigation case has expired or the server restarted. Run the investigation again to start a fresh conversation.');
+            // Render may restart or replace an instance between chat turns. Rebuild the case
+            // from the same validated form inputs instead of losing the conversation.
+            const restored = await rebuildIntelligenceCase(body.workflow, body.inputs);
+            activeCaseId = rememberIntelligenceCase(restored.kind, restored.inputs, restored.report);
+            caseRecord = {
+              kind: restored.kind,
+              inputs: restored.inputs,
+              report: restored.report,
+            };
+            recovered = true;
           }
+
           const answer = await answerIntelFollowup(caseRecord, question, {
             history: normalizeAccountChatHistory(body.history),
             fetchImpl,
           });
-          return sendJson(res, 200, { ...answer, requestId }, requestId);
+          return sendJson(res, 200, { ...answer, caseId: activeCaseId, recovered, requestId }, requestId);
         }
         if (pathname === '/api/intelligence/assess') {
           const username = parseGithubAccountName(body.username ?? body.account);

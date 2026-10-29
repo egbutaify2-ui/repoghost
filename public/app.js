@@ -763,8 +763,9 @@ function renderIntelligenceChatMessage(role, message, citations = [], uncertaint
   return article;
 }
 
-function attachIntelligenceChat(output, workflow, caseId) {
+function attachIntelligenceChat(output, workflow, caseId, caseInputs) {
   if (!output || !caseId) return;
+  let activeCaseId = caseId;
   const headings = {
     assessment: 'Keep interrogating this profile',
     comparison: 'Ask more about these two shadows',
@@ -781,13 +782,14 @@ function attachIntelligenceChat(output, workflow, caseId) {
     '<form class="intel-chat-form"><label class="sr-only" for="intel-chat-question-' + escapeHtml(caseId) + '">Ask a follow-up question</label>' +
     '<input id="intel-chat-question-' + escapeHtml(caseId) + '" name="question" type="text" maxlength="700" autocomplete="off" placeholder="Ask the ghost about this case…" required>' +
     '<button type="submit"><span>Ask</span><span aria-hidden="true">↗</span></button></form>' +
-    '<p class="intel-chat-footnote">A fresh investigation starts a new conversation. Case context expires after 30 minutes of inactivity or a server restart.</p>';
+    '<p class="intel-chat-footnote">A fresh investigation starts a new conversation. If the case expires or the server restarts, RepoGhost will try to restore it from these original inputs.</p>';
   output.appendChild(chat);
 
   const form = chat.querySelector('.intel-chat-form');
   const input = form.elements.namedItem('question');
   const button = form.querySelector('button[type="submit"]');
   const messages = chat.querySelector('.intel-chat-messages');
+  const caseStatus = chat.querySelector('.intel-chat-status');
   const conversationHistory = [];
 
   form.addEventListener('submit', async (event) => {
@@ -813,12 +815,20 @@ function attachIntelligenceChat(output, workflow, caseId) {
       const response = await fetch('/api/intelligence/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ caseId, question, history: history.map((item) => ({ role: item.role, content: String(item.content || '').slice(0, item.role === 'assistant' ? 1000 : 600) })) }),
+        body: JSON.stringify({
+          caseId: activeCaseId,
+          workflow,
+          inputs: caseInputs,
+          question,
+          history: history.map((item) => ({ role: item.role, content: String(item.content || '').slice(0, item.role === 'assistant' ? 1000 : 600) })),
+        }),
       });
       let payload;
       try { payload = await response.json(); }
       catch { throw new Error('The archive returned a response RepoGhost could not read. Please try again.'); }
       if (!response.ok) throw new Error(payload.error && payload.error.message || 'The follow-up failed (HTTP ' + response.status + ').');
+      if (typeof payload.caseId === 'string' && payload.caseId) activeCaseId = payload.caseId;
+      if (payload.recovered && caseStatus) caseStatus.textContent = 'CASE RESTORED';
       pending.remove();
       const answer = payload.answer || (payload.status && payload.status.message) || 'The ghost could not answer this follow-up.';
       messages.appendChild(renderIntelligenceChatMessage('assistant', answer, payload.citations, payload.uncertainty, false, payload.answerType));
@@ -859,10 +869,11 @@ function bindIntelligenceForm(formId, endpoint, responseKey, payloadBuilder, ren
     button.disabled = true;
     if (buttonLabel) buttonLabel.textContent = 'Working…';
     try {
+      const investigationInputs = payloadBuilder(value);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(payloadBuilder(value)),
+        body: JSON.stringify(investigationInputs),
       });
       let payload;
       try { payload = await response.json(); }
@@ -873,7 +884,7 @@ function bindIntelligenceForm(formId, endpoint, responseKey, payloadBuilder, ren
         throw new Error('The server did not return an active investigation case for follow-up chat.');
       }
       output.innerHTML = renderer(payload[responseKey]);
-      attachIntelligenceChat(output, responseKey, payload.caseId);
+      attachIntelligenceChat(output, responseKey, payload.caseId, investigationInputs);
     } catch (error) {
       output.innerHTML = renderIntelError(error.message || 'Something went wrong. Please try again.');
     } finally {
