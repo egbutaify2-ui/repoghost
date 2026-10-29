@@ -782,7 +782,7 @@ function attachIntelligenceChat(output, workflow, caseId, caseInputs) {
     '<form class="intel-chat-form"><label class="sr-only" for="intel-chat-question-' + escapeHtml(caseId) + '">Ask a follow-up question</label>' +
     '<input id="intel-chat-question-' + escapeHtml(caseId) + '" name="question" type="text" maxlength="700" autocomplete="off" placeholder="Ask the ghost about this case…" required>' +
     '<button type="submit"><span>Ask</span><span aria-hidden="true">↗</span></button></form>' +
-    '<p class="intel-chat-footnote">A fresh investigation starts a new conversation. Case context expires after 30 minutes of inactivity or a server restart.</p>';
+    '<p class="intel-chat-footnote">A fresh investigation starts a new conversation. If the case expires or the server restarts, RepoGhost will try to restore it from these original inputs.</p>';
   output.appendChild(chat);
 
   const form = chat.querySelector('.intel-chat-form');
