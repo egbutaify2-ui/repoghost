@@ -1935,6 +1935,23 @@ function compactDeveloperComparisonChatCase(report) {
       kind: 'developer-comparison',
       goal: takeText(report.goal, 180),
       summary: takeText(report.summary, 650),
+      verdict: report.verdict && typeof report.verdict === 'object' ? {
+        outcome: ['left', 'right', 'no_clear_preference'].includes(report.verdict.outcome) ? report.verdict.outcome : 'no_clear_preference',
+        headline: takeText(report.verdict.headline, 240),
+        reason: takeText(report.verdict.reason, 650),
+        method: takeText(report.verdict.method, 450),
+        caveat: takeText(report.verdict.caveat, 450),
+        left: report.verdict.left && typeof report.verdict.left === 'object' ? {
+          login: takeText(report.verdict.left.login, 50),
+          roleRelevantProjectCount: Number.isFinite(report.verdict.left.roleRelevantProjectCount) ? report.verdict.left.roleRelevantProjectCount : 0,
+          roleMatchSignalCount: Number.isFinite(report.verdict.left.roleMatchSignalCount) ? report.verdict.left.roleMatchSignalCount : 0,
+        } : null,
+        right: report.verdict.right && typeof report.verdict.right === 'object' ? {
+          login: takeText(report.verdict.right.login, 50),
+          roleRelevantProjectCount: Number.isFinite(report.verdict.right.roleRelevantProjectCount) ? report.verdict.right.roleRelevantProjectCount : 0,
+          roleMatchSignalCount: Number.isFinite(report.verdict.right.roleMatchSignalCount) ? report.verdict.right.roleMatchSignalCount : 0,
+        } : null,
+      } : null,
       criteria,
       sharedSignals: Array.isArray(report.sharedSignals) ? report.sharedSignals.slice(0, 12) : [],
       left: sides.left,
@@ -2072,6 +2089,74 @@ function validateIntelligenceChatTextAnswer(output, evidence) {
 }
 
 
+
+function collectComparisonAnswerCitations(report, options = {}) {
+  const sideNames = Array.isArray(options.sideNames) ? options.sideNames : ['left', 'right'];
+  const targetTechnology = String(options.technology || '').trim().toLowerCase();
+  const limit = Number.isInteger(options.limit) ? Math.max(1, Math.min(options.limit, 8)) : 6;
+  const citations = [];
+  const seenUrls = new Set();
+  const isGithubUrl = (url) => typeof url === 'string' &&
+    /^https:\/\/github\.com\/[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)?(?:[/?#]|$)/i.test(url);
+
+  const add = (sideName, source, fallbackId, fallbackTitle) => {
+    if (!source || !isGithubUrl(source.url) || seenUrls.has(source.url)) return;
+    seenUrls.add(source.url);
+    const rawId = String(source.id || fallbackId || ('source-' + citations.length)).replace(/[^a-z0-9_-]/gi, '-').slice(0, 80);
+    citations.push({
+      id: 'comparison-' + sideName + '-' + rawId,
+      title: String(fallbackTitle || source.title || rawId).slice(0, 180),
+      url: source.url.slice(0, 500),
+    });
+  };
+
+  for (const sideName of sideNames) {
+    if (citations.length >= limit) break;
+    const side = report && report[sideName];
+    if (!side || typeof side !== 'object') continue;
+    const sources = Array.isArray(side.sources) ? side.sources : [];
+    const sourceById = new Map(sources.filter((source) => source && typeof source.id === 'string').map((source) => [source.id, source]));
+    if (targetTechnology) {
+      const techSignals = (Array.isArray(side.demonstratedTechnologies) ? side.demonstratedTechnologies : [])
+        .filter((item) => String(item && item.technology || '').toLowerCase().includes(targetTechnology));
+      for (const signal of techSignals) {
+        for (const sourceId of Array.isArray(signal.sourceIds) ? signal.sourceIds : []) {
+          const source = sourceById.get(sourceId);
+          add(sideName, source, sourceId, source && source.title);
+          if (citations.length >= limit) break;
+        }
+        if (citations.length >= limit) break;
+      }
+      if (citations.length >= limit) continue;
+      for (const project of Array.isArray(side.relevantProjects) ? side.relevantProjects : []) {
+        const terms = (Array.isArray(project && project.matchedTerms) ? project.matchedTerms : []).map((term) => String(term).toLowerCase());
+        if (!terms.some((term) => term.includes(targetTechnology)) &&
+            !String(project && project.language || '').toLowerCase().includes(targetTechnology) &&
+            !String(project && project.description || '').toLowerCase().includes(targetTechnology)) continue;
+        const linked = (Array.isArray(project.sourceIds) ? project.sourceIds : []).map((id) => sourceById.get(id)).find(Boolean);
+        add(sideName, linked || { id: 'project', title: project.fullName, url: project.url }, 'project', project.fullName);
+        if (citations.length >= limit) break;
+      }
+    } else {
+      const projects = (Array.isArray(side.relevantProjects) ? side.relevantProjects : [])
+        .filter((project) => project && Array.isArray(project.matchedTerms) && project.matchedTerms.length);
+      for (const project of projects) {
+        const linked = (Array.isArray(project.sourceIds) ? project.sourceIds : []).map((id) => sourceById.get(id)).find(Boolean);
+        add(sideName, linked || { id: 'project', title: project.fullName, url: project.url }, 'project', project.fullName);
+        if (citations.length >= limit) break;
+      }
+    }
+    if (citations.length < limit) {
+      const profile = sources.find((source) => source && source.type === 'profile' && isGithubUrl(source.url));
+      if (profile) add(sideName, profile, 'account-profile', profile.title);
+      else if (side.account && isGithubUrl(side.account.url)) {
+        add(sideName, { id: 'account-profile', title: 'GitHub profile @' + String(side.account.login || 'unknown'), url: side.account.url }, 'account-profile', 'GitHub profile @' + String(side.account.login || 'unknown'));
+      }
+    }
+  }
+  return citations.slice(0, limit);
+}
+
 function answerIntelligenceDirectQuestion(caseRecord, questionInput, sourceList = []) {
   const question = String(questionInput || '').trim();
   const report = caseRecord && caseRecord.report;
@@ -2089,6 +2174,97 @@ function answerIntelligenceDirectQuestion(caseRecord, questionInput, sourceList 
   }
 
   if (report.kind === 'developer-comparison') {
+    const comparisonSides = ['left', 'right'].map((sideName) => ({
+      sideName,
+      side: report[sideName],
+      login: String(report[sideName] && report[sideName].account && report[sideName].account.login || (sideName === 'left' ? 'left profile' : 'right profile')),
+    })).filter((entry) => entry.side);
+    const verdict = report.verdict || {};
+    const asksWhoWins = /\bwho\s+(?:wins?|won|comes?\s+out\s+on\s+top)\b|\bwho\s+(?:would|do)\s+you\s+(?:pick|prefer)\b|\bwhich\s+(?:one|profile|candidate|account|developer)\s+(?:wins?|is\s+(?:better|stronger))\b|\bwho\s+is\s+(?:better|stronger)\b|\bwho\s+do\s+you\s+prefer\b|\bwho\s+would\s+you\s+choose\b/i.test(question);
+    if (asksWhoWins) {
+      const outcome = ['left', 'right'].includes(verdict.outcome) ? verdict.outcome : 'no_clear_preference';
+      const chosen = outcome === 'left' || outcome === 'right' ? report[outcome] : null;
+      const otherName = outcome === 'left' ? comparisonSides.find((item) => item.sideName === 'right')?.login
+        : outcome === 'right' ? comparisonSides.find((item) => item.sideName === 'left')?.login : '';
+      const chosenName = chosen && chosen.account && chosen.account.login;
+      const citations = collectComparisonAnswerCitations(report, {
+        sideNames: outcome === 'left' ? ['left', 'right'] : outcome === 'right' ? ['right', 'left'] : ['left', 'right'],
+        limit: 6,
+      });
+      let answer;
+      if (chosenName) {
+        answer = '**Preliminary pick for further evaluation: @' + chosenName + '.** ' +
+          String(verdict.reason || report.summary || 'The current role-related public signals lean toward this profile.') +
+          (otherName ? ' The other profile is @' + otherName + '.' : '') +
+          ' This is the better-supported profile to inspect next under the report’s keyword/metadata method—not a verdict that this person is the better engineer. Push recency, stars, and repository totals do not decide this call. Review the cited code and tests, then give both candidates the same small role-specific task before making a hiring decision.';
+      } else {
+        answer = '**No clear winner from the available evidence.** ' +
+          String(verdict.reason || report.summary || 'The returned public signals do not distinguish the two profiles reliably.') +
+          ' I would not break the tie using push recency, stars, or repository totals. The fair next step is to inspect the same kind of TypeScript or role-relevant implementation from both candidates and compare their reasoning and tests.';
+      }
+      return {
+        answer,
+        answerType: citations.length ? 'case_evidence' : 'general_context',
+        citations,
+        uncertainty: [String(verdict.caveat || 'This is a preliminary public-evidence preference only; it does not establish skill, authorship, code quality, private work, or job performance.')],
+        status: { code: 'AI_READY', message: 'Answered directly from the comparison verdict and public source links.' },
+        model: null,
+      };
+    }
+
+    const asksComparativeSkill = /\b(?:who|which|more|better|stronger|knowledge|know|knows|skill|skills|proficien|experienced|experience|expert)\b/i.test(question);
+    const technologyNames = [...new Set(comparisonSides.flatMap(({ side }) =>
+      (Array.isArray(side.demonstratedTechnologies) ? side.demonstratedTechnologies : [])
+        .map((item) => String(item && item.technology || '').trim())
+        .filter(Boolean)))];
+    const askedTechnology = asksComparativeSkill
+      ? technologyNames.find((name) => question.toLowerCase().includes(name.toLowerCase()))
+      : null;
+    if (askedTechnology) {
+      const signalForSide = (side) => (Array.isArray(side && side.demonstratedTechnologies) ? side.demonstratedTechnologies : [])
+        .find((item) => String(item && item.technology || '').toLowerCase() === askedTechnology.toLowerCase());
+      const leftSide = report.left || {};
+      const rightSide = report.right || {};
+      const leftSignal = signalForSide(leftSide);
+      const rightSignal = signalForSide(rightSide);
+      const describeCount = (signal) => Number.isFinite(signal && signal.repositoryCount)
+        ? String(signal.repositoryCount) + ' returned repository-level signal(s)'
+        : (signal ? 'a visible repository-level signal' : 'no matching signal surfaced in this sample');
+      const citations = collectComparisonAnswerCitations(report, { sideNames: ['left', 'right'], technology: askedTechnology, limit: 6 });
+      const leftLogin = String(leftSide.account && leftSide.account.login || 'left account');
+      const rightLogin = String(rightSide.account && rightSide.account.login || 'right account');
+      let answer;
+      if (leftSignal && rightSignal) {
+        const leftCount = Number.isFinite(leftSignal.repositoryCount) ? leftSignal.repositoryCount : null;
+        const rightCount = Number.isFinite(rightSignal.repositoryCount) ? rightSignal.repositoryCount : null;
+        const visibilityLine = leftCount !== null && rightCount !== null && leftCount !== rightCount
+          ? ' The public snapshot has broader ' + askedTechnology + ' visibility for @' +
+            (leftCount > rightCount ? leftLogin : rightLogin) + ' (' + Math.max(leftCount, rightCount) +
+            ' repository-level signal(s) versus ' + Math.min(leftCount, rightCount) + ').'
+          : ' The returned snapshots both contain a visible ' + askedTechnology + ' signal.';
+        answer = 'I can’t honestly say who has more ' + askedTechnology + ' knowledge from this report. Both @' + leftLogin +
+          ' and @' + rightLogin + ' have a public ' + askedTechnology + ' signal.' + visibilityLine +
+          ' Signal counts show where the technology appeared in the returned public snapshot; they do not test depth, correctness, or independent engineering ability. My current verdict is **no defensible knowledge winner yet**. To compare fairly, inspect their cited ' + askedTechnology +
+          ' code for type design, generics, narrowing, API contracts, error handling, and tests, then give both the same small implementation task.';
+      } else {
+        const visibleLogin = leftSignal ? leftLogin : rightSignal ? rightLogin : '';
+        const absentLogin = leftSignal ? rightLogin : leftSignal ? rightLogin : '';
+        answer = visibleLogin
+          ? 'The returned public snapshot shows a ' + askedTechnology + ' signal for @' + visibleLogin +
+            ' (' + describeCount(leftSignal || rightSignal) + ') but not for @' + absentLogin +
+            '. That makes @' + visibleLogin + ' the stronger visible-evidence lead for this technology in this sample—not proof they know it better or that @' + absentLogin + ' lacks the skill. Inspect actual code and use the same practical task to compare proficiency.'
+          : 'The returned comparison did not surface a clear ' + askedTechnology + ' signal for either account. That means this snapshot cannot name a skill winner; it does not mean either person lacks the skill. Let’s inspect the public project sources or compare a concrete implementation.';
+      }
+      return {
+        answer,
+        answerType: citations.length ? 'case_evidence' : 'general_context',
+        citations,
+        uncertainty: ['Public technology metadata and README mentions cannot establish depth of knowledge or code quality.'],
+        status: { code: 'AI_READY', message: 'Answered directly from the comparison’s stored technology signals.' },
+        model: null,
+      };
+    }
+
     const asksForTrustVerdict = /\b(?:trust|rely on|depend on|hire|qualified|suitable|good fit|ready for|hireable)\b/i.test(question)
       && /\b(?:role|software engineering|software engineer|engineering|developer|job|candidate|profile|account)\b/i.test(question);
     if (asksForTrustVerdict) {
