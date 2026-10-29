@@ -2246,6 +2246,99 @@ test('returns a useful case reply rather than a model-format error when both inf
   assert.ok(result.citations.length > 0);
 });
 
+test('rejects model-generated chat-format failure notices and answers from the case fallback', async () => {
+  const report = {
+    kind: 'developer-assessment',
+    summary: 'The public snapshot surfaced possible role-related evidence in alpha/mobile.',
+    account: { login: 'alpha', url: 'https://github.com/alpha' },
+    relevantProjects: [{
+      fullName: 'alpha/mobile',
+      url: 'https://github.com/alpha/mobile',
+      matchedTerms: ['typescript'],
+      sourceIds: ['repo'],
+    }],
+    demonstratedTechnologies: [{ technology: 'TypeScript', repositoryCount: 1, sourceIds: ['repo'] }],
+    sources: [
+      { id: 'account-profile', type: 'profile', title: 'GitHub account @alpha', url: 'https://github.com/alpha' },
+      { id: 'repo', type: 'repository', title: 'alpha/mobile', url: 'https://github.com/alpha/mobile' },
+    ],
+  };
+  const technicalFailure = 'The model could not provide a conversational answer with a valid response type and, when discussing case facts, verifiable citations. Please try rephrasing the question.';
+  let calls = 0;
+  const result = await answerIntelligenceFollowup({
+    kind: 'assessment',
+    inputs: { username: 'alpha', role: 'Software Engineer' },
+    report,
+  }, 'How should I interpret the evidence for this developer?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async () => {
+      calls += 1;
+      return responseJson({
+        model: DEFAULT_MODEL,
+        choices: [{ message: { content: JSON.stringify({
+          answer: technicalFailure,
+          answerType: 'conversation',
+          sourceIds: [],
+          uncertainty: [],
+        }) } }],
+      });
+    },
+  });
+
+  assert.equal(calls, 2, 'JSON and plain-text recovery are attempted at most once each');
+  assert.equal(result.status.code, 'AI_FALLBACK');
+  assert.ok(result.answer.trim());
+  assert.match(result.answer, /alpha\/mobile/);
+  assert.doesNotMatch(result.answer, /model could not provide|please try rephrasing/i);
+  assert.ok(result.citations.every((source) => /^https:\/\/github\.com\//i.test(source.url)));
+});
+
+test('answers TypeScript comparisons from language snapshots when the comparison report kind differs', async () => {
+  const makeSide = (login, projectName) => ({
+    account: { login, url: 'https://github.com/' + login },
+    relevantProjects: [{
+      fullName: login + '/' + projectName,
+      url: 'https://github.com/' + login + '/' + projectName,
+      language: 'TypeScript',
+      matchedTerms: ['typescript'],
+      sourceIds: [login + '-repo'],
+    }],
+    demonstratedTechnologies: [],
+    languagesInReturnedSnapshot: ['TypeScript', 'JavaScript'],
+    sources: [
+      { id: login + '-profile', type: 'profile', title: 'GitHub account @' + login, url: 'https://github.com/' + login },
+      { id: login + '-repo', type: 'repository', title: login + '/' + projectName, url: 'https://github.com/' + login + '/' + projectName },
+    ],
+  });
+  const report = {
+    kind: 'comparison',
+    summary: 'Both public snapshots show TypeScript signals.',
+    verdict: { outcome: 'no_clear_preference', headline: 'No clear preference from the available evidence', reason: 'Both snapshots contain language signals.' },
+    left: makeSide('alpha', 'typed-app'),
+    right: makeSide('beta', 'typed-api'),
+    criteria: [],
+    limitations: ['The snapshot does not establish proficiency.'],
+  };
+  let providerCalls = 0;
+  const result = await answerIntelligenceFollowup({ kind: 'comparison', inputs: {}, report },
+    'who has more knowledge in TypeScript?', {
+      env: {},
+      fetchImpl: async () => {
+        providerCalls += 1;
+        throw new Error('This direct comparison answer should not call the model.');
+      },
+    });
+
+  assert.equal(providerCalls, 0);
+  assert.ok(result.answer.trim());
+  assert.match(result.answer, /honestly say who has more TypeScript knowledge/i);
+  assert.match(result.answer, /@alpha/);
+  assert.match(result.answer, /@beta/);
+  assert.equal(result.answerType, 'case_evidence');
+  assert.ok(result.citations.every((source) => /^https:\/\/github\.com\//i.test(source.url)));
+});
+
 test('returns a conversational answer when the model key is unavailable', async () => {
   const report = {
     kind: 'developer-assessment',

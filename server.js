@@ -1962,9 +1962,26 @@ function compactDeveloperComparisonChatCase(report) {
   };
 }
 
+function isDeveloperComparisonReport(report) {
+  if (!report || typeof report !== 'object') return false;
+  if (report.kind === 'developer-comparison' || report.kind === 'comparison') return true;
+  return Boolean(report.left && report.right &&
+    (report.verdict || Array.isArray(report.criteria) || (report.left.account && report.right.account)));
+}
+
+function isModelFailureMessage(value) {
+  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  if (!text) return true;
+  if (text.length > 800) return false;
+  return /the model could not provide a conversational answer/i.test(text) ||
+    /valid response type.{0,180}verifiable citations/i.test(text) ||
+    /please try rephrasing (?:the|your) question/i.test(text) ||
+    /^(?:model error|response validation failed|invalid model response)\b/i.test(text);
+}
+
 function buildIntelligenceChatEvidence(caseRecord, sourceList) {
   const report = caseRecord && caseRecord.report;
-  if (report && report.kind === 'developer-comparison') {
+  if (report && isDeveloperComparisonReport(report)) {
     const compactComparison = compactDeveloperComparisonChatCase(report);
     return {
       workflow: caseRecord.kind,
@@ -2017,6 +2034,9 @@ function validateIntelligenceChatAnswer(answer, evidence) {
   }
   if (typeof answer.answer !== 'string' || !answer.answer.trim()) {
     throw new ModelResponseError('The model did not provide a conversational answer.');
+  }
+  if (isModelFailureMessage(answer.answer)) {
+    throw new ModelResponseError('The model returned a technical failure notice instead of a user-facing answer.');
   }
   const answerType = typeof answer.answerType === 'string' ? answer.answerType.trim() : '';
   if (!['case_evidence', 'general_context', 'conversation'].includes(answerType)) {
@@ -2077,6 +2097,9 @@ function validateIntelligenceChatTextAnswer(output, evidence) {
     !/^\s*Answer-Type\s*:/i.test(line) && !/^\s*Sources\s*:/i.test(line) && !/^\s*Uncertainty\s*:/i.test(line)
   ).join('\n').trim();
   if (!answer) throw new ModelResponseError('The plain-text answer did not contain a reply.');
+  if (isModelFailureMessage(answer)) {
+    throw new ModelResponseError('The model returned a technical failure notice instead of a user-facing answer.');
+  }
   const uncertaintyLine = text.match(/^\s*Uncertainty\s*:\s*(.*?)\s*$/im);
   return {
     answer: answer.slice(0, 4_000),
@@ -2173,7 +2196,7 @@ function answerIntelligenceDirectQuestion(caseRecord, questionInput, sourceList 
     };
   }
 
-  if (report.kind === 'developer-comparison') {
+  if (isDeveloperComparisonReport(report)) {
     const comparisonSides = ['left', 'right'].map((sideName) => ({
       sideName,
       side: report[sideName],
@@ -2213,16 +2236,34 @@ function answerIntelligenceDirectQuestion(caseRecord, questionInput, sourceList 
     }
 
     const asksComparativeSkill = /\b(?:who|which|more|better|stronger|knowledge|know|knows|skill|skills|proficien|experienced|experience|expert)\b/i.test(question);
-    const technologyNames = [...new Set(comparisonSides.flatMap(({ side }) =>
-      (Array.isArray(side.demonstratedTechnologies) ? side.demonstratedTechnologies : [])
-        .map((item) => String(item && item.technology || '').trim())
-        .filter(Boolean)))];
+    const technologyNames = [...new Set(comparisonSides.flatMap(({ side }) => [
+      ...(Array.isArray(side.demonstratedTechnologies) ? side.demonstratedTechnologies : [])
+        .map((item) => String(item && item.technology || '').trim()),
+      ...(Array.isArray(side.languagesInReturnedSnapshot) ? side.languagesInReturnedSnapshot : [])
+        .map((item) => String(item || '').trim()),
+    ].filter(Boolean)))];
     const askedTechnology = asksComparativeSkill
       ? technologyNames.find((name) => question.toLowerCase().includes(name.toLowerCase()))
       : null;
     if (askedTechnology) {
-      const signalForSide = (side) => (Array.isArray(side && side.demonstratedTechnologies) ? side.demonstratedTechnologies : [])
-        .find((item) => String(item && item.technology || '').toLowerCase() === askedTechnology.toLowerCase());
+      const signalForSide = (side) => {
+        const signals = Array.isArray(side && side.demonstratedTechnologies) ? side.demonstratedTechnologies : [];
+        const directSignal = signals.find((item) =>
+          String(item && item.technology || '').toLowerCase() === askedTechnology.toLowerCase());
+        if (directSignal) return directSignal;
+
+        const languages = Array.isArray(side && side.languagesInReturnedSnapshot) ? side.languagesInReturnedSnapshot : [];
+        if (languages.some((language) => String(language || '').toLowerCase() === askedTechnology.toLowerCase())) {
+          return { technology: askedTechnology, repositoryCount: null };
+        }
+        const projects = Array.isArray(side && side.relevantProjects) ? side.relevantProjects : [];
+        const matchingProjects = projects.filter((project) => {
+          const terms = Array.isArray(project && project.matchedTerms) ? project.matchedTerms : [];
+          return terms.some((term) => String(term || '').toLowerCase() === askedTechnology.toLowerCase());
+        });
+        if (matchingProjects.length) return { technology: askedTechnology, repositoryCount: matchingProjects.length };
+        return null;
+      };
       const leftSide = report.left || {};
       const rightSide = report.right || {};
       const leftSignal = signalForSide(leftSide);
@@ -2387,6 +2428,15 @@ function buildIntelligenceChatFallback(caseRecord, questionInput, sourceList = [
   let citations = [];
   let uncertainty = [];
 
+  const simpleGreeting = /\b(?:hi|hello|hey|thanks|thank you|wow|nice)\b/i.test(question) && question.split(/\s+/).length <= 8;
+  if (!simpleGreeting) {
+    const directAnswer = answerIntelligenceDirectQuestion(caseRecord, question, sourceList);
+    if (directAnswer && typeof directAnswer.answer === 'string' && directAnswer.answer.trim() &&
+        !isModelFailureMessage(directAnswer.answer)) {
+      return directAnswer;
+    }
+  }
+
   if (/\b(?:what is|what's|explain|define)\s+(?:typescript|type script)\b/i.test(question)) {
     answer = 'TypeScript is JavaScript with a static type system: it lets developers describe data shapes, function contracts, and mistakes the type checker can catch before code runs. That explains the language generally; it does not tell us which candidate uses TypeScript more effectively. For that, compare actual typed code, tests, and a practical task.';
     answerType = 'general_context';
@@ -2395,7 +2445,7 @@ function buildIntelligenceChatFallback(caseRecord, questionInput, sourceList = [
       ? 'Anytime! I’m still here. Want to dig into a project, a technology signal, or what this evidence cannot prove?'
       : 'I’m here with you. We can keep digging into this case—ask about one of the projects, a technology signal, or how strong the evidence really is.';
     answerType = 'conversation';
-  } else if (report && report.kind === 'developer-comparison') {
+  } else if (report && isDeveloperComparisonReport(report)) {
     const verdict = report.verdict || {};
     citations = collectComparisonAnswerCitations(report, { sideNames: ['left', 'right'], limit: 4 });
     answer = 'I’m still with you. ' +
@@ -2467,7 +2517,7 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
   if (evidencePayload.length > MAX_INTELLIGENCE_CHAT_EVIDENCE_CHARS) {
     // Last-resort summarization preserves the case identity, concise conclusion,
     // comparison verdict, criteria, and a bounded list of source links instead of refusing chat.
-    const minimalReport = report && report.kind === 'developer-comparison'
+    const minimalReport = report && isDeveloperComparisonReport(report)
       ? {
           kind: report.kind,
           goal: String(report.goal || '').slice(0, 160),
