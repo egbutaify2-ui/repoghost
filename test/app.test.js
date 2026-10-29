@@ -1800,16 +1800,18 @@ test('answers trust questions from a developer comparison without another model 
   assert.ok(!result.citations.some((source) => source.url.includes('/otherdev')));
 });
 
-test('returns a context-size status instead of throwing when compact evidence exceeds the chat limit', async () => {
+test('compacts an oversized generic report instead of blocking follow-up chat', async () => {
   const noisyMetadata = Object.fromEntries(
     Array.from({ length: 40 }, (_, index) => ['field' + index, 'x'.repeat(240)])
   );
   let providerCalls = 0;
+  let evidenceLength = 0;
   const result = await answerIntelligenceFollowup({
     kind: 'health',
     inputs: { repositoryUrl: 'https://github.com/alpha/mobile-app' },
     report: {
       kind: 'repository-health',
+      summary: 'This health report contains noisy metadata that should be safely summarized for chat.',
       repository: { fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app' },
       metadataOne: noisyMetadata,
       metadataTwo: noisyMetadata,
@@ -1819,15 +1821,31 @@ test('returns a context-size status instead of throwing when compact evidence ex
   }, 'Can you explain this report?', {
     env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
     openRouterBaseUrl: 'https://openrouter.test/api/v1',
-    fetchImpl: async () => {
+    fetchImpl: async (input, options) => {
       providerCalls += 1;
-      throw new Error('Inference must not be called for an oversized payload.');
+      const request = JSON.parse(options.body);
+      const prompt = request.messages[1].content;
+      const marker = 'Case evidence JSON: ';
+      const start = prompt.indexOf(marker);
+      assert.notEqual(start, -1);
+      evidenceLength = prompt.slice(start + marker.length).length;
+      assert.ok(evidenceLength < 18_000);
+      return responseJson({
+        model: 'test-compact-context-model',
+        choices: [{ message: { content: JSON.stringify({
+          answer: 'I can explain it. The large metadata fields were compressed; the report summary and repository identity remain available.',
+          answerType: 'general_context',
+          sourceIds: [],
+          uncertainty: ['Some nonessential metadata fields were omitted from the chat context.'],
+        }) } }],
+      });
     },
   });
 
-  assert.equal(providerCalls, 0);
-  assert.equal(result.status.code, 'AI_CONTEXT_TOO_LARGE');
-  assert.match(result.status.message, /more evidence than the chat can safely pass/i);
+  assert.equal(providerCalls, 1);
+  assert.ok(evidenceLength > 0);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.match(result.answer, /large metadata fields were compressed/i);
 });
 
 test('answers which project matched a technology signal without waiting on the model', async () => {
