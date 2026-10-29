@@ -1737,6 +1737,99 @@ test('all four developer-intelligence endpoints return structured evidence repor
 
 
 
+
+test('answers trust questions from a developer comparison without another model call', async () => {
+  let providerCalls = 0;
+  const report = {
+    kind: 'developer-comparison',
+    summary: 'The comparison covers only the returned public repositories.',
+    limitations: [
+      'The comparison covers only the returned public repository lists and bounded README/activity samples.',
+      'Repository count, stars, commit volume and push recency are not direct measures of engineering quality.',
+      'Private work, individual authorship and role performance cannot be established from this evidence.',
+    ],
+    left: {
+      kind: 'developer-assessment',
+      account: { login: 'egbutaify2-ui', url: 'https://github.com/egbutaify2-ui', publicRepos: 12 },
+      relevantProjects: [{
+        fullName: 'egbutaify2-ui/sanity-lenslink-agent',
+        url: 'https://github.com/egbutaify2-ui/sanity-lenslink-agent',
+        matchedTerms: ['typescript', 'next.js'],
+        sourceIds: ['repository-1'],
+      }],
+      demonstratedTechnologies: [
+        { technology: 'TypeScript', repositoryCount: 2, sourceIds: ['repository-1'] },
+        { technology: 'Next.js', repositoryCount: 1, sourceIds: ['repository-1'] },
+      ],
+      sources: [
+        { id: 'account-profile', type: 'profile', title: 'GitHub account @egbutaify2-ui', url: 'https://github.com/egbutaify2-ui' },
+        { id: 'repository-1', type: 'repository', title: 'egbutaify2-ui/sanity-lenslink-agent', url: 'https://github.com/egbutaify2-ui/sanity-lenslink-agent' },
+      ],
+    },
+    right: {
+      kind: 'developer-assessment',
+      account: { login: 'otherdev', url: 'https://github.com/otherdev' },
+      relevantProjects: [],
+      demonstratedTechnologies: [],
+      sources: [
+        { id: 'account-profile', type: 'profile', title: 'GitHub account @otherdev', url: 'https://github.com/otherdev' },
+      ],
+    },
+  };
+
+  const result = await answerIntelligenceFollowup({
+    kind: 'comparison',
+    inputs: { usernameA: 'egbutaify2-ui', usernameB: 'otherdev', goal: 'Software Engineer' },
+    report,
+  }, 'Wow, so that means when it comes to software engineering can I trust egbutaify2-ui for the role?', {
+    env: {},
+    fetchImpl: async () => {
+      providerCalls += 1;
+      throw new Error('A question answerable from comparison evidence must not call the model.');
+    },
+  });
+
+  assert.equal(providerCalls, 0);
+  assert.equal(result.status.code, 'AI_READY');
+  assert.equal(result.answerType, 'case_evidence');
+  assert.match(result.answer, /Not on this report alone/);
+  assert.match(result.answer, /egbutaify2-ui\/sanity-lenslink-agent/);
+  assert.match(result.answer, /cannot establish|does not establish|not proof/i);
+  assert.equal(result.citations.length, 1);
+  assert.equal(result.citations[0].url, 'https://github.com/egbutaify2-ui/sanity-lenslink-agent');
+  assert.ok(!result.citations.some((source) => source.url.includes('/otherdev')));
+});
+
+test('returns a context-size status instead of throwing when compact evidence exceeds the chat limit', async () => {
+  const noisyMetadata = Object.fromEntries(
+    Array.from({ length: 40 }, (_, index) => ['field' + index, 'x'.repeat(240)])
+  );
+  let providerCalls = 0;
+  const result = await answerIntelligenceFollowup({
+    kind: 'health',
+    inputs: { repositoryUrl: 'https://github.com/alpha/mobile-app' },
+    report: {
+      kind: 'repository-health',
+      repository: { fullName: 'alpha/mobile-app', url: 'https://github.com/alpha/mobile-app' },
+      metadataOne: noisyMetadata,
+      metadataTwo: noisyMetadata,
+      metadataThree: noisyMetadata,
+      sources: [],
+    },
+  }, 'Can you explain this report?', {
+    env: { OPENROUTER_API_KEY: 'test-secret', OPENROUTER_MODEL: DEFAULT_MODEL },
+    openRouterBaseUrl: 'https://openrouter.test/api/v1',
+    fetchImpl: async () => {
+      providerCalls += 1;
+      throw new Error('Inference must not be called for an oversized payload.');
+    },
+  });
+
+  assert.equal(providerCalls, 0);
+  assert.equal(result.status.code, 'AI_CONTEXT_TOO_LARGE');
+  assert.match(result.status.message, /more evidence than the chat can safely pass/i);
+});
+
 test('answers which project matched a technology signal without waiting on the model', async () => {
   let providerCalls = 0;
   const report = {
