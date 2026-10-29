@@ -2143,10 +2143,9 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
       code: cause && typeof cause.code === 'string' ? cause.code.slice(0, 80) : undefined,
       message: error && typeof error.message === 'string' ? error.message.slice(0, 200) : undefined,
     });
-    return { answer: null, citations: [], uncertainty: [], status: { code: 'AI_UNAVAILABLE', message: 'The model service could not answer this follow-up. Please try again.' }, model: null };
-
+    return { answer: null, answerType: null, citations: [], uncertainty: [], status: { code: 'AI_UNAVAILABLE', message: 'The model service could not answer this follow-up. Please try again.' }, model: null };
+  }
 }
-
 function createServer(dependencies = {}) {
   const getEvidence = dependencies.getRepositoryEvidence || getRepositoryEvidence;
   const getAnalysis = dependencies.analyzeEvidence || analyzeEvidence;
