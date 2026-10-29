@@ -1933,6 +1933,81 @@ function answerIntelligenceDirectQuestion(caseRecord, questionInput, sourceList 
     };
   }
 
+  if (report.kind === 'developer-comparison') {
+    const asksForTrustVerdict = /\b(?:trust|rely on|depend on|hire|qualified|suitable|good fit|ready for|hireable)\b/i.test(question)
+      && /\b(?:role|software engineering|software engineer|engineering|developer|job|candidate|profile|account)\b/i.test(question);
+    if (asksForTrustVerdict) {
+      const sides = [report.left, report.right].filter((side) => side && side.account);
+      const mentionedSide = sides.find((side) => {
+        const login = String(side.account.login || '').trim().toLowerCase();
+        return login && question.toLowerCase().includes(login);
+      });
+      const chosenSide = mentionedSide || (sides.length === 1 ? sides[0] : null);
+      if (!chosenSide) {
+        return {
+          answer: 'I wouldn’t treat this comparison as proof that either person can be trusted for the role. It only surfaces limited public-project signals. Tell me which account you want to assess, and I’ll explain what this report supports for that candidate. For either person, the next step is to verify individual contribution, review actual code and tests, and use a small role-specific technical exercise.',
+          answerType: 'general_context',
+          citations: [],
+          uncertainty: ['The comparison does not establish job performance, individual authorship, or trustworthiness.'],
+          status: { code: 'AI_READY', message: 'Answered directly from the comparison limitations.' },
+          model: null,
+        };
+      }
+
+      const account = chosenSide.account;
+      const login = String(account.login || 'this account');
+      const relevantProjects = Array.isArray(chosenSide.relevantProjects) ? chosenSide.relevantProjects : [];
+      const projectLeads = relevantProjects.filter((project) => project && (project.matchedTerms || []).length);
+      const techSignals = Array.isArray(chosenSide.demonstratedTechnologies) ? chosenSide.demonstratedTechnologies : [];
+      const technologies = [...new Set(techSignals.map((item) => item && item.technology).filter(Boolean))].slice(0, 5);
+      const sideSources = Array.isArray(chosenSide.sources) ? chosenSide.sources : [];
+      const sourceById = new Map(sideSources.filter((source) => source && typeof source.id === 'string').map((source) => [source.id, source]));
+      const citations = [];
+      for (const project of projectLeads.slice(0, 4)) {
+        const projectSource = (Array.isArray(project.sourceIds) ? project.sourceIds : [])
+          .map((id) => sourceById.get(id))
+          .find((source) => source && typeof source.url === 'string' && /^https:\/\/github\.com\//i.test(source.url));
+        const url = projectSource && projectSource.url || project.url;
+        if (typeof url === 'string' && /^https:\/\/github\.com\//i.test(url) && !citations.some((source) => source.url === url)) {
+          citations.push({
+            id: projectSource && projectSource.id || 'candidate-project-' + (citations.length + 1),
+            title: project.fullName || projectSource && projectSource.title || 'Public project',
+            url,
+          });
+        }
+      }
+      if (!citations.length) {
+        const profileSource = sideSources.find((source) => source && source.type === 'profile' && source.url);
+        if (profileSource) citations.push({ id: profileSource.id, title: profileSource.title || 'GitHub profile @' + login, url: profileSource.url });
+        else if (typeof account.url === 'string' && /^https:\/\/github\.com\//i.test(account.url)) {
+          citations.push({ id: 'candidate-profile', title: 'GitHub profile @' + login, url: account.url });
+        }
+      }
+
+      const projectNames = projectLeads.slice(0, 3).map((project) => project.fullName).filter(Boolean);
+      const evidenceSummary = projectNames.length
+        ? 'This comparison surfaced role-related public project leads for @' + login + ': ' + projectNames.join(', ') + '.'
+        : 'This comparison did not surface a strong role-relevant project lead for @' + login + ' in the returned sample.';
+      const technologySummary = technologies.length
+        ? ' The snapshot also recorded these visible technology signals: ' + technologies.join(', ') + '.'
+        : ' It did not record recognizable technology signals in the returned sample.';
+      const answer = 'Not on this report alone. ' + evidenceSummary + technologySummary + ' Those signals make the profile something to investigate, not proof that the person authored the code, can maintain it independently, or will perform well in the job. ' +
+        (projectNames.length
+          ? 'For a software-engineering role, ask them to walk through one of the cited projects, explain a design trade-off, inspect the tests and implementation, and complete a small role-specific exercise.'
+          : 'Before drawing a conclusion, ask for a relevant project walkthrough, inspect actual code and tests, and use a small role-specific technical exercise.') +
+        ' My verdict from this comparison: worth checking further if the projects match the role, but not enough evidence to make a hiring or trust decision by itself.';
+
+      return {
+        answer,
+        answerType: citations.length ? 'case_evidence' : 'general_context',
+        citations: citations.length ? citations : [],
+        uncertainty: ['The comparison covers only returned public repositories and bounded README/activity samples. It cannot establish private work, individual authorship, code quality, or role performance.'],
+        status: { code: 'AI_READY', message: 'Answered directly from the stored comparison report and its public source links.' },
+        model: null,
+      };
+    }
+  }
+
   if (report.kind !== 'developer-assessment') return null;
   const asksForProject = /\b(which|what|name|identify)\b.{0,100}\b(project|repo|repository)\b|\b(project|repo|repository)\b.{0,80}\b(which|what|uses?|used|has|had)\b/i.test(question);
   if (!asksForProject) return null;
@@ -2005,7 +2080,6 @@ async function answerIntelligenceFollowup(caseRecord, questionInput, options = {
   });
 
   if (evidencePayload.length > MAX_INTELLIGENCE_CHAT_EVIDENCE_CHARS) {
-    clearTimeout(timer);
     return {
       answer: null,
       citations: [],
