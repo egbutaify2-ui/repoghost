@@ -738,6 +738,101 @@ function renderIntelRecommendations(recommendations) {
       recommendations.collectionWarnings.map((item) => '<li>' + escapeHtml(item.repository + ': ' + item.message) + '</li>').join('') + '</ul></section>' : '');
 }
 
+
+
+function renderIntelligenceChatMessage(role, message, citations = [], uncertainty = [], pending = false) {
+  const article = document.createElement('article');
+  article.className = 'intel-chat-message ' + (role === 'user' ? 'user' : 'assistant') + (pending ? ' pending' : '');
+  const label = role === 'user' ? 'YOU' : 'THE GHOST';
+  const sourceList = Array.isArray(citations) ? citations.filter((source) => source && intelSafeUrl(source.url)).slice(0, 6) : [];
+  const uncertaintyList = Array.isArray(uncertainty) ? uncertainty.filter((item) => typeof item === 'string' && item.trim()).slice(0, 4) : [];
+  article.innerHTML = '<span class="intel-chat-message-label">' + label + '</span><p>' +
+    escapeHtml(String(message || '')).replace(/\n/g, '<br>') + '</p>' +
+    (sourceList.length ? '<div class="intel-chat-citations"><span>TRACES</span>' + sourceList.map((source) =>
+      '<a href="' + escapeHtml(intelSafeUrl(source.url)) + '" target="_blank" rel="noopener noreferrer">' +
+      escapeHtml(source.title || source.id || 'GitHub source') + ' ↗</a>').join('') + '</div>' : '') +
+    (uncertaintyList.length ? '<p class="intel-chat-uncertainty"><strong>Still unknown:</strong> ' +
+      uncertaintyList.map((item) => escapeHtml(item)).join(' ') + '</p>' : '');
+  return article;
+}
+
+function attachIntelligenceChat(output, workflow, caseId) {
+  if (!output || !caseId) return;
+  const headings = {
+    assessment: 'Keep interrogating this profile',
+    comparison: 'Ask more about these two shadows',
+    health: 'Question this repository further',
+    recommendations: 'Keep following this trail',
+  };
+  const chat = document.createElement('section');
+  chat.className = 'intel-chat-panel';
+  chat.setAttribute('aria-label', 'AI follow-up chat for this investigation');
+  chat.innerHTML = '<div class="intel-chat-heading"><div><span class="card-kicker">THE ARCHIVE IS STILL OPEN</span><h4>' +
+    escapeHtml(headings[workflow] || 'Ask a follow-up') + '</h4></div><span class="intel-chat-status">CASE LINKED</span></div>' +
+    '<p class="intel-chat-intro">Ask why a signal appeared, what a project shows, or what the evidence cannot establish. Replies stay tied to this investigation and its public source links.</p>' +
+    '<div class="intel-chat-messages" aria-live="polite"><div class="intel-chat-empty"><strong>The case is open.</strong><span>Ask your first follow-up below.</span></div></div>' +
+    '<form class="intel-chat-form"><label class="sr-only" for="intel-chat-question-' + escapeHtml(caseId) + '">Ask a follow-up question</label>' +
+    '<input id="intel-chat-question-' + escapeHtml(caseId) + '" name="question" type="text" maxlength="700" autocomplete="off" placeholder="Ask the ghost about this case…" required>' +
+    '<button type="submit"><span>Ask</span><span aria-hidden="true">↗</span></button></form>' +
+    '<p class="intel-chat-footnote">A fresh investigation starts a new conversation. Case context expires after 30 minutes of inactivity or a server restart.</p>';
+  output.appendChild(chat);
+
+  const form = chat.querySelector('.intel-chat-form');
+  const input = form.elements.namedItem('question');
+  const button = form.querySelector('button[type="submit"]');
+  const messages = chat.querySelector('.intel-chat-messages');
+  const conversationHistory = [];
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (!question || button.disabled) return;
+    const history = conversationHistory.slice(-6);
+    const userMessage = { role: 'user', content: question };
+    conversationHistory.push(userMessage);
+    messages.querySelector('.intel-chat-empty')?.remove();
+    messages.appendChild(renderIntelligenceChatMessage('user', question));
+    const pending = renderIntelligenceChatMessage('assistant', 'Listening to the evidence in this case…', [], [], true);
+    messages.appendChild(pending);
+    messages.scrollTop = messages.scrollHeight;
+    input.value = '';
+    input.disabled = true;
+    button.disabled = true;
+    const buttonText = button.querySelector('span:first-child');
+    const originalText = buttonText ? buttonText.textContent : 'Ask';
+    if (buttonText) buttonText.textContent = 'Listening…';
+
+    try {
+      const response = await fetch('/api/intelligence/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ caseId, question, history: history.map((item) => ({ role: item.role, content: String(item.content || '').slice(0, item.role === 'assistant' ? 1000 : 600) })) }),
+      });
+      let payload;
+      try { payload = await response.json(); }
+      catch { throw new Error('The archive returned a response RepoGhost could not read. Please try again.'); }
+      if (!response.ok) throw new Error(payload.error && payload.error.message || 'The follow-up failed (HTTP ' + response.status + ').');
+      pending.remove();
+      const answer = payload.answer || (payload.status && payload.status.message) || 'The ghost could not answer this follow-up.';
+      messages.appendChild(renderIntelligenceChatMessage('assistant', answer, payload.citations, payload.uncertainty));
+      conversationHistory.push({ role: 'assistant', content: answer });
+      if (conversationHistory.length > 8) conversationHistory.splice(0, conversationHistory.length - 8);
+    } catch (error) {
+      pending.remove();
+      const message = error.message || 'The follow-up could not be completed. Please try again.';
+      messages.appendChild(renderIntelligenceChatMessage('assistant', message));
+      conversationHistory.push({ role: 'assistant', content: message });
+      if (conversationHistory.length > 8) conversationHistory.splice(0, conversationHistory.length - 8);
+    } finally {
+      messages.scrollTop = messages.scrollHeight;
+      input.disabled = false;
+      button.disabled = false;
+      if (buttonText) buttonText.textContent = originalText;
+      input.focus();
+    }
+  });
+}
+
 function bindIntelligenceForm(formId, endpoint, responseKey, payloadBuilder, renderer, loadingMessage) {
   const formElement = document.getElementById(formId);
   if (!formElement) return;
@@ -767,7 +862,11 @@ function bindIntelligenceForm(formId, endpoint, responseKey, payloadBuilder, ren
       catch { throw new Error('The server returned a response RepoGhost could not read. Please try again.'); }
       if (!response.ok) throw new Error(payload.error && payload.error.message || 'The investigation failed (HTTP ' + response.status + ').');
       if (!payload[responseKey]) throw new Error('The server did not return the expected evidence report.');
+      if (typeof payload.caseId !== 'string' || !payload.caseId) {
+        throw new Error('The server did not return an active investigation case for follow-up chat.');
+      }
       output.innerHTML = renderer(payload[responseKey]);
+      attachIntelligenceChat(output, responseKey, payload.caseId);
     } catch (error) {
       output.innerHTML = renderIntelError(error.message || 'Something went wrong. Please try again.');
     } finally {
