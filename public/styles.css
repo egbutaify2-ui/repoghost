@@ -884,3 +884,27 @@ h1 { margin-bottom: 18px; font-size: clamp(44px, 5.3vw, 70px); line-height: 1.03
   .intel-chat-form { grid-template-columns: minmax(0, 1fr); }
   .intel-chat-form button { min-height: 42px; justify-content: space-between; }
 }
+
+
+.intel-chat-answer-kind {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 6px;
+  border: 1px solid #35434d;
+  color: #aab9c5;
+  font-size: 8px;
+  line-height: 1.4;
+  letter-spacing: .09em;
+}
+.intel-chat-answer-kind.general_context {
+  border-color: #67553d;
+  color: #d7be96;
+}
+.intel-chat-answer-kind.conversation {
+  border-color: #394a53;
+  color: #a8c0cb;
+}
+.intel-chat-answer-kind.case_evidence {
+  border-color: #405548;
+  color: #a7cbb0;
+}
