@@ -110,15 +110,14 @@ function rankRepositories(repositories, goal, context = '') {
     });
     const phraseHits = matchedTerms.filter((term) => term.includes(' ') || term.includes('.')).length;
     const score = matchedTerms.length + phraseHits;
-    const pushedAt = repository && repository.pushedAt ? Date.parse(repository.pushedAt) || 0 : 0;
     return {
       repository,
       score,
       matchedTerms,
       relevanceReasons: matchedTerms.slice(0, 5).map((term) => 'Public repository metadata matches "' + term + '".'),
-      pushedAt,
     };
-  }).sort((left, right) => right.score - left.score || right.pushedAt - left.pushedAt ||
+  }).sort((left, right) => right.score - left.score ||
+    Number(Boolean(left.repository && left.repository.fork)) - Number(Boolean(right.repository && right.repository.fork)) ||
     String(left.repository && left.repository.fullName || '').localeCompare(String(right.repository && right.repository.fullName || '')));
 }
 
@@ -155,6 +154,102 @@ function mapRepositoryEvidence(evidenceRows) {
   return { rows: mapped, sources };
 }
 
+
+const MIRROR_LANGUAGE_PATTERN = /\b(?:read[- ]only\s+mirror|mirror(?:ed)?\s+(?:of|from|upstream|repository)|upstream\s+mirror|automatically\s+mirrored|synchroni[sz]ed\s+mirror)\b/i;
+
+function buildRepositoryOriginSignal(repository, readmeText, repositorySourceId, readmeSourceId = null) {
+  const parentName = typeof repository.parentFullName === 'string' &&
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository.parentFullName)
+    ? repository.parentFullName
+    : null;
+  const mirrorUrl = typeof repository.mirrorUrl === 'string' && repository.mirrorUrl.trim()
+    ? repository.mirrorUrl.trim().slice(0, 500)
+    : null;
+  if (repository.fork === true) {
+    return {
+      kind: 'observed',
+      label: 'GitHub-marked fork',
+      detail: parentName
+        ? 'GitHub marks this repository as a fork of ' + parentName + '. This relationship does not show how much original work this account added.'
+        : 'GitHub marks this repository as a fork, but the parent repository was not present in this snapshot.',
+      parentFullName: parentName,
+      parentUrl: parentName ? 'https://github.com/' + parentName : null,
+      sourceIds: [repositorySourceId],
+    };
+  }
+  if (mirrorUrl) {
+    return {
+      kind: 'observed',
+      label: 'GitHub-reported mirror source',
+      detail: 'GitHub metadata reports this repository mirrors ' + mirrorUrl + '. Verify the source and history before attributing original work.',
+      mirrorUrl,
+      sourceIds: [repositorySourceId],
+    };
+  }
+  const descriptionSuggestsMirror = MIRROR_LANGUAGE_PATTERN.test(String(repository.description || ''));
+  const readmeSuggestsMirror = MIRROR_LANGUAGE_PATTERN.test(String(readmeText || ''));
+  if (descriptionSuggestsMirror || readmeSuggestsMirror) {
+    const sourceIds = [repositorySourceId];
+    if (readmeSuggestsMirror && readmeSourceId) sourceIds.push(readmeSourceId);
+    return {
+      kind: 'inference',
+      label: 'Possible mirror — verify origin',
+      detail: 'The public description or README uses mirror-related wording. This is a lead to verify against the upstream repository and history, not a confirmed classification.',
+      sourceIds,
+    };
+  }
+  return {
+    kind: 'observed',
+    label: 'Origin not established',
+    detail: 'This snapshot does not mark the repository as a fork or report a mirror source. That does not prove the repository contains original work.',
+    sourceIds: [repositorySourceId],
+  };
+}
+
+function buildRepositoryActivitySignal(repository, sourceId) {
+  const timestamp = repository && repository.pushedAt ? Date.parse(repository.pushedAt) : NaN;
+  if (!Number.isFinite(timestamp)) {
+    return {
+      kind: 'observed',
+      label: 'Push date unavailable',
+      detail: 'GitHub did not provide a usable last-push date in this snapshot. No conclusion about project activity can be drawn from a missing date.',
+      sourceIds: [sourceId],
+    };
+  }
+  const date = new Date(timestamp).toISOString().slice(0, 10);
+  const ageDays = Math.max(0, Math.floor((Date.now() - timestamp) / 86400000));
+  const olderThanYear = ageDays >= 365;
+  return {
+    kind: 'observed',
+    label: olderThanYear ? 'No recorded push in the last 12 months' : 'Push recorded within the last 12 months',
+    detail: 'GitHub reports the last push on ' + date + '. This is a repository activity signal, not a measure of code quality or individual ability; a quiet history does not prove abandonment.',
+    lastPushDate: date,
+    daysSincePush: ageDays,
+    sourceIds: [sourceId],
+  };
+}
+
+function buildRepositoryArchiveSignal(repository, sourceId) {
+  const archived = repository && repository.archived === true;
+  return {
+    kind: 'observed',
+    label: archived ? 'GitHub marks this repository archived' : 'Not marked archived by GitHub',
+    detail: archived
+      ? 'GitHub reports this repository as archived. Confirm current maintainer intent before assuming it will receive updates.'
+      : 'GitHub does not mark this repository archived in the current snapshot; that alone does not prove it is actively maintained.',
+    sourceIds: [sourceId],
+  };
+}
+
+function buildRepositoryAttributionSignal(sourceId) {
+  return {
+    kind: 'unknown',
+    label: 'Individual authorship not established',
+    detail: 'Repository ownership, stars and commit volume do not prove who wrote the code or how much original work this account contributed.',
+    sourceIds: [sourceId],
+  };
+}
+
 function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evidenceRows = []) {
   const account = discovery && discovery.account ? discovery.account : {};
   const role = cleanText(roleInput, 120) || 'Software Engineering';
@@ -180,7 +275,8 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
         ],
       };
     })
-    .sort((left, right) => right.score - left.score || right.pushedAt - left.pushedAt ||
+    .sort((left, right) => right.score - left.score ||
+      Number(Boolean(left.repository && left.repository.fork)) - Number(Boolean(right.repository && right.repository.fork)) ||
       String(left.repository && left.repository.fullName || '').localeCompare(String(right.repository && right.repository.fullName || '')));
   const selected = ranked.filter((item) => item.score > 0).slice(0, 4);
   const sources = [{
@@ -229,6 +325,18 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
         reasons: terms.length ? item.relevanceReasons : ['No target-role terms were matched in this repository’s public metadata.'],
         sourceIds: [id],
         archived: repository.archived === true,
+        fork: repository.fork === true,
+        parentFullName: repository.parentFullName || null,
+        mirrorUrl: repository.mirrorUrl || null,
+        originSignal: buildRepositoryOriginSignal(
+          repository,
+          evidence && evidence.readme && evidence.readme.content || '',
+          id,
+          readmeSource,
+        ),
+        activitySignal: buildRepositoryActivitySignal(repository, id),
+        archiveSignal: buildRepositoryArchiveSignal(repository, id),
+        attributionSignal: buildRepositoryAttributionSignal(id),
         license: repository.license || null,
         documentationSignals,
       });
@@ -365,8 +473,9 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
 
   const returnedCount = Number.isFinite(discovery && discovery.returnedCount) ? discovery.returnedCount : ((discovery && discovery.repositories) || []).length;
   const publicRepos = Number.isFinite(account.publicRepos) ? account.publicRepos : returnedCount;
-  const summary = selected.length
-    ? 'The public snapshot contains ' + selected.length + ' role-relevant repository candidate(s) for "' + role + '". The strongest matches are selected from repository names, descriptions, languages and, where collected, README text. This is a screening aid, not a hiring verdict.'
+  const surfacedProjects = projectRows.filter((project) => project.matchedTerms.length).slice(0, 3);
+  const summary = surfacedProjects.length
+    ? 'The public snapshot surfaced possible role-relevant evidence in ' + surfacedProjects.map((project) => project.fullName).join(', ') + '. These leads come from keyword overlap in public metadata and inspected README text; they are not proof of proficiency or an overall developer score.'
     : 'The current public repository snapshot does not show a clear metadata match for "' + role + '". That does not establish that the developer lacks this experience; more targeted project evidence or a technical screen is needed.';
   return {
     kind: 'developer-assessment',
@@ -392,9 +501,25 @@ function buildDeveloperAssessment(discovery, roleInput, contextInput = '', evide
     nextStep: bestProject
       ? 'Inspect ' + bestProject.fullName + ', review its cited project evidence, then use a role-relevant technical screen to verify implementation quality and individual contribution.'
       : 'Ask the developer to nominate a role-relevant project, review its code and tests, and use a small practical exercise to verify the required skills.',
+    evidenceInterpretation: {
+      observed: [
+        'GitHub fork flags, reported mirror sources, archived state and last-push dates are displayed as repository metadata when available.',
+        'Repository links identify the public records used for each signal.',
+      ],
+      inferred: [
+        'Possible-mirror labels are heuristics based on description or README wording and require manual verification.',
+        'Role relevance is estimated from keyword overlap in public metadata and inspected README text; mentions do not prove proficiency.',
+      ],
+      unknown: [
+        'Individual authorship and the amount of original work contributed by an account.',
+        'Code quality, engineering judgment, collaboration, private work or job performance.',
+      ],
+    },
     limitations: [
       'Assessment uses public GitHub evidence only and cannot establish private work or professional performance.',
       'Matched keywords are relevance signals, not proof of proficiency.',
+      'Fork status and mirror clues do not establish how much original work an account contributed.',
+      'A quiet push history or missing release is not proof that a project is abandoned.',
       'Only the returned repository sample and any explicitly inspected README/activity evidence were assessed.',
     ],
     sources: [...new Map(sources.filter((source) => source.url).map((source) => [source.id, source])).values()],
@@ -427,10 +552,10 @@ function buildDeveloperComparison(left, right, goal) {
   const rightDate = rightNewest && Date.parse(rightNewest.pushedAt) || 0;
   const criteria = [
     {
-      label: 'Role-relevant public repositories',
-      leftValue: String(leftProjects.filter((project) => project.matchedTerms && project.matchedTerms.length).length) + ' matched project(s)',
-      rightValue: String(rightProjects.filter((project) => project.matchedTerms && project.matchedTerms.length).length) + ' matched project(s)',
-      interpretation: 'Based on matching terms in the returned public repository metadata and inspected README samples, not a measure of engineering quality.',
+      label: 'Role-relevant public project leads',
+      leftValue: leftProjects.filter((project) => project.matchedTerms && project.matchedTerms.length).map((project) => project.fullName).join(', ') || 'No relevant project lead surfaced',
+      rightValue: rightProjects.filter((project) => project.matchedTerms && project.matchedTerms.length).map((project) => project.fullName).join(', ') || 'No relevant project lead surfaced',
+      interpretation: 'Names are leads selected by keyword overlap in returned metadata and inspected README samples. Neither list length nor ordering measures individual ability.',
       leftSourceIds: leftProjects.map((project) => project.sourceIds[0]),
       rightSourceIds: rightProjects.map((project) => project.sourceIds[0]),
     },
@@ -461,16 +586,7 @@ function buildDeveloperComparison(left, right, goal) {
       rightSourceIds: rightProjects.map((project) => project.sourceIds[0]),
     },
   ];
-  const leftMatches = leftProjects.filter((project) => project.matchedTerms && project.matchedTerms.length).length;
-  const rightMatches = rightProjects.filter((project) => project.matchedTerms && project.matchedTerms.length).length;
-  let summary;
-  if (leftMatches === rightMatches) {
-    summary = 'The collected public evidence does not clearly distinguish the accounts by count of role-relevant repository matches for "' + cleanText(goal, 120) + '". Compare the cited projects directly and verify code quality in a practical screen.';
-  } else {
-    const more = leftMatches > rightMatches ? left : right;
-    const matches = Math.max(leftMatches, rightMatches);
-    summary = '@' + more.account.login + ' has more role-relevant repository matches in the selected public evidence (' + matches + ' versus ' + Math.min(leftMatches, rightMatches) + '). This is a metadata relevance finding, not an overall developer ranking.';
-  }
+  const summary = 'This comparison surfaces public evidence related to "' + cleanText(goal, 120) + '". It does not rank the accounts: inspect the cited projects and verify individual contribution, code quality and role-specific skills separately.';
   return {
     kind: 'developer-comparison',
     goal: cleanText(goal, 160),
@@ -647,6 +763,8 @@ function buildRepositoryRecommendations(discovery, goalInput, evidenceRows = [])
     const evidence = evidenceByName.get(String(repository.fullName || '').toLowerCase());
     const reasons = item.relevanceReasons.length ? item.relevanceReasons : ['Matches the stated goal in returned repository metadata.'];
     const age = repository.pushedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(repository.pushedAt)) / 86400000)) : null;
+    if (repository.fork === true) reasons.push('GitHub marks this repository as a fork; inspect its parent and the changes made here before attributing original work.');
+    if (repository.mirrorUrl) reasons.push('GitHub reports a mirror source; verify upstream history before attributing original work.');
     if (repository.archived) reasons.push('GitHub marks the repository archived; check whether forking and reuse fit your purpose.');
     if (!repository.license) reasons.push('No license was reported in this metadata snapshot; check the repository license before reusing code.');
     const issues = evidence ? evidence.issues : [];
@@ -666,6 +784,18 @@ function buildRepositoryRecommendations(discovery, goalInput, evidenceRows = [])
       language: repository.language || null,
       license: repository.license || null,
       archived: repository.archived === true,
+      fork: repository.fork === true,
+      parentFullName: repository.parentFullName || null,
+      mirrorUrl: repository.mirrorUrl || null,
+      originSignal: buildRepositoryOriginSignal(
+        repository,
+        evidence && evidence.readme && evidence.readme.content || '',
+        'repository-' + (index + 1),
+        evidence && evidence.sourceIds && evidence.sourceIds.readme || null,
+      ),
+      activitySignal: buildRepositoryActivitySignal(repository, 'repository-' + (index + 1)),
+      archiveSignal: buildRepositoryArchiveSignal(repository, 'repository-' + (index + 1)),
+      attributionSignal: buildRepositoryAttributionSignal('repository-' + (index + 1)),
       stars: Number.isFinite(repository.stars) ? repository.stars : null,
       pushedAt: repository.pushedAt || null,
       ageSincePushDays: age,
@@ -697,7 +827,7 @@ function buildRepositoryRecommendations(discovery, goalInput, evidenceRows = [])
     goal,
     recommendations,
     summary: recommendations.length
-      ? 'Found ' + recommendations.length + ' repository candidate(s) with metadata relevant to the stated goal. Ordering reflects keyword relevance to the goal, not a measure of quality.'
+      ? 'Possible repository leads for the stated goal include ' + recommendations.slice(0, 3).map((item) => item.fullName).join(', ') + '. Ordering reflects keyword relevance to the goal, not a measure of quality.'
       : 'The returned public repository metadata did not contain a clear match for this goal. Try a more specific technology or use case, or investigate a broader set of repositories.',
     contributionGuidance: recommendations.length
       ? 'Only issues actually returned by GitHub are shown as possible leads. Confirm current state, license terms, project conventions and reproducibility before contributing.'

@@ -547,6 +547,38 @@ function renderIntelError(message) {
   return '<div class="error-card" role="alert"><strong>The trail has been interrupted</strong><p>' + escapeHtml(message) + '</p></div>';
 }
 
+
+function renderIntelSignalCard(kicker, signal, sources) {
+  if (!signal) return '';
+  const kind = signal.kind === 'inference' ? 'INFERENCE' : signal.kind === 'unknown' ? 'UNKNOWN' : 'OBSERVED';
+  const parentLink = signal.parentUrl
+    ? '<p class="intel-evidence-note">Reported parent: <a href="' + escapeHtml(intelSafeUrl(signal.parentUrl)) +
+      '" target="_blank" rel="noopener noreferrer">' + escapeHtml(signal.parentFullName || 'parent repository') + ' ↗</a></p>'
+    : '';
+  return '<div class="intel-signal-card"><span class="card-kicker">' + escapeHtml(kicker) + ' / ' + kind +
+    '</span><strong>' + escapeHtml(signal.label || 'Not established') + '</strong><p>' +
+    escapeHtml(signal.detail || '') + '</p>' + parentLink +
+    renderIntelSourceLinks(sources, Array.isArray(signal.sourceIds) ? signal.sourceIds : []) + '</div>';
+}
+
+function renderIntelSignalGrid(record, sources) {
+  if (!record || (!record.originSignal && !record.activitySignal && !record.archiveSignal && !record.attributionSignal)) return '';
+  return '<div class="intel-signal-grid">' +
+    renderIntelSignalCard('ORIGIN', record.originSignal, sources) +
+    renderIntelSignalCard('ACTIVITY', record.activitySignal, sources) +
+    renderIntelSignalCard('ARCHIVE STATUS', record.archiveSignal, sources) +
+    renderIntelSignalCard('ATTRIBUTION', record.attributionSignal, sources) +
+    '</div>';
+}
+
+function renderIntelEvidenceMethodology() {
+  return '<section class="intel-evidence-methodology" aria-label="How to interpret the evidence">' +
+    '<div><span class="card-kicker">OBSERVED</span><strong>What GitHub reports</strong><p>Fork relationships, reported mirror sources, archived state, push dates, and public project metadata—when available.</p></div>' +
+    '<div><span class="card-kicker">INFERRED</span><strong>What RepoGhost suspects</strong><p>Possible mirrors and role relevance are leads based on public wording or keyword overlap, not confirmed authorship or proficiency.</p></div>' +
+    '<div><span class="card-kicker">UNKNOWN</span><strong>What this cannot prove</strong><p>Who wrote each line, how much original work an account contributed, code quality, private work, or job performance.</p></div>' +
+    '</section>';
+}
+
 function renderIntelProject(project, assessment) {
   return '<article class="intel-project"><div class="intel-project-head"><div><a href="' +
     escapeHtml(intelSafeUrl(project.url)) + '" target="_blank" rel="noopener noreferrer">' +
@@ -554,6 +586,7 @@ function renderIntelProject(project, assessment) {
     '</p></div><span class="pill ' + (project.archived ? 'warn' : 'neutral') + '">' +
     (project.archived ? 'Archived' : escapeHtml(project.language || 'Language unknown')) + '</span></div>' +
     '<div class="intel-term-list">' + (project.matchedTerms || []).slice(0, 8).map((term) => '<span>' + escapeHtml(term) + '</span>').join('') + '</div>' +
+    renderIntelSignalGrid(project, assessment.sources) +
     '<p class="intel-evidence-note">' + escapeHtml((project.reasons || []).join(' ')) + '</p>' +
     (project.license ? '<p class="intel-evidence-note">Reported license: ' + escapeHtml(project.license) + ' (review the terms before reuse).</p>' : '<p class="intel-evidence-note">No license was reported in this snapshot; review the repository before reuse.</p>') +
     renderIntelSourceLinks(assessment.sources, project.sourceIds) +
@@ -570,7 +603,7 @@ function renderIntelAssessment(assessment) {
     '</span><h3>' + escapeHtml(assessment.role) + '</h3></div><a class="intel-profile-link" href="' +
     escapeHtml(intelSafeUrl(assessment.account.url)) + '" target="_blank" rel="noopener noreferrer">Open profile ↗</a></div>' +
     '<section class="intel-summary"><strong>What the record reveals</strong><p>' + escapeHtml(assessment.summary) + '</p>' +
-    renderIntelSourceLinks(sources, ['account-profile']) + '</section>' +
+    renderIntelSourceLinks(sources, ['account-profile']) + '</section>' + renderIntelEvidenceMethodology() +
     '<div class="intel-results-grid"><section class="intel-result-card"><span class="card-kicker">CLUES / RELEVANT PROJECTS</span><h4>Projects worth examining</h4>' +
     ((assessment.relevantProjects || []).length ? assessment.relevantProjects.map((project) => renderIntelProject(project, assessment)).join('') :
       renderIntelEmpty('No strong role-specific metadata match was found in the returned public repository sample.')) +
@@ -627,7 +660,8 @@ function renderIntelComparison(comparison) {
   };
   return '<div class="intel-result-heading"><div><span class="card-kicker">ACCOUNT COMPARISON</span><h3>' + escapeHtml(comparison.goal) + '</h3></div></div>' +
     '<section class="intel-summary"><strong>What the traces suggest</strong><p>' + escapeHtml(comparison.summary) +
-    '</p><p class="intel-evidence-note">This is a relevance comparison, not an overall ranking of developer quality.</p></section>' +
+    '</p><p class="intel-evidence-note">This comparison does not rank overall developer quality. Inspect each cited project and verify contribution and implementation quality separately.</p></section>' +
+    renderIntelEvidenceMethodology() +
     '<div class="intel-compare-grid">' + renderSide(left) + renderSide(right) + '</div>' +
     '<section class="intel-result-card intel-criteria"><span class="card-kicker">TWO SHADOWS / EXPLICIT CRITERIA</span>' +
     (comparison.criteria || []).map((criterion) => '<div class="intel-criterion"><h4>' + escapeHtml(criterion.label) + '</h4>' +
@@ -690,6 +724,7 @@ function renderIntelRecommendations(recommendations) {
       '<div class="intel-snapshot-grid"><div><span>Language</span><strong>' + escapeHtml(item.language || 'Not reported') + '</strong></div><div><span>License</span><strong>' +
       escapeHtml(item.license || 'Not reported') + '</strong></div><div><span>Last push</span><strong>' + escapeHtml(item.pushedAt ? formatDate(item.pushedAt) : 'Not reported') +
       '</strong></div><div><span>Archived</span><strong>' + (item.archived ? 'Yes' : 'Not marked archived') + '</strong></div></div>' +
+      renderIntelSignalGrid(item, recommendations.sources) +
       renderIntelSourceLinks(recommendations.sources, item.sourceIds) +
       ((item.contributionOpportunities || []).length ? '<h4>Issue leads to verify</h4><ul class="intel-mini-list">' + item.contributionOpportunities.map((lead) =>
         '<li><a href="' + escapeHtml(intelSafeUrl(lead.url)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(lead.title) + ' ↗</a><p>' +

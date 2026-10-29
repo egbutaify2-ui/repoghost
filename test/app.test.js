@@ -230,6 +230,42 @@ test('rejects repository URLs and malformed GitHub account names during discover
   for (const value of invalid) assert.throws(() => parseGithubAccountName(value), HttpError, value);
 });
 
+test('preserves GitHub fork parent and mirror-source metadata during account discovery', async () => {
+  const fetchImpl = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/users/origin-check') {
+      return responseJson({ login: 'origin-check', type: 'User', public_repos: 2, followers: 0 });
+    }
+    if (url.pathname === '/users/origin-check/repos') {
+      return responseJson([
+        {
+          name: 'forked-app', full_name: 'origin-check/forked-app', private: false, fork: true,
+          parent: { full_name: 'upstream/mobile-app', html_url: 'https://github.com/upstream/mobile-app' },
+          mirror_url: null, description: 'A mobile app', language: 'TypeScript',
+          pushed_at: '2025-01-01T00:00:00Z', archived: false,
+        },
+        {
+          name: 'vendor-mirror', full_name: 'origin-check/vendor-mirror', private: false, fork: false,
+          parent: null, mirror_url: 'https://git.example.test/upstream/project',
+          description: 'Read-only project mirror', language: 'JavaScript',
+          pushed_at: '2025-01-01T00:00:00Z', archived: false,
+        },
+      ]);
+    }
+    throw new Error('Unexpected mocked URL: ' + url.href);
+  };
+  const discovery = await discoverRepositories('origin-check', {
+    fetchImpl,
+    githubApiBaseUrl: 'https://api.github.test',
+  });
+  const fork = discovery.repositories.find((repository) => repository.name === 'forked-app');
+  const mirror = discovery.repositories.find((repository) => repository.name === 'vendor-mirror');
+  assert.equal(fork.fork, true);
+  assert.equal(fork.parentFullName, 'upstream/mobile-app');
+  assert.equal(mirror.fork, false);
+  assert.equal(mirror.mirrorUrl, 'https://git.example.test/upstream/project');
+});
+
 test('discovers public repositories for a GitHub user and normalizes repository metadata', async () => {
   const requests = [];
   const fetchImpl = async (input) => {
@@ -1285,7 +1321,9 @@ function intelligenceDiscovery(login, repositories) {
       updatedAt: repository.updatedAt || null,
       createdAt: repository.createdAt || null,
       archived: repository.archived === true,
-      fork: false,
+      fork: repository.fork === true,
+      parentFullName: repository.parentFullName || null,
+      mirrorUrl: repository.mirrorUrl || null,
       defaultBranch: 'main',
       license: repository.license || null,
       topics: repository.topics || [],
@@ -1355,6 +1393,54 @@ function intelligenceRepositoryEvidence(fullName, options = {}) {
   };
 }
 
+test('separates fork, possible-mirror, archival, activity and authorship signals from relevance', () => {
+  const oldPush = new Date(Date.now() - 400 * 86400000).toISOString();
+  const recentPush = new Date(Date.now() - 5 * 86400000).toISOString();
+  const discovery = intelligenceDiscovery('maintainer', [
+    {
+      name: 'alpha-mobile', fullName: 'maintainer/alpha-mobile', url: 'https://github.com/maintainer/alpha-mobile',
+      description: 'React Native mobile app', language: 'TypeScript', stars: 1, archived: false,
+      pushedAt: oldPush, fork: false, license: 'MIT License',
+    },
+    {
+      name: 'zeta-mobile', fullName: 'maintainer/zeta-mobile', url: 'https://github.com/maintainer/zeta-mobile',
+      description: 'React Native mobile app', language: 'TypeScript', stars: 900, archived: false,
+      pushedAt: recentPush, fork: false, license: 'MIT License',
+    },
+    {
+      name: 'forked-mobile', fullName: 'maintainer/forked-mobile', url: 'https://github.com/maintainer/forked-mobile',
+      description: 'React Native mobile app fork', language: 'TypeScript', stars: 300, archived: false,
+      pushedAt: recentPush, fork: true, parentFullName: 'upstream/mobile-app', license: 'MIT License',
+    },
+    {
+      name: 'archived-mirror', fullName: 'maintainer/archived-mirror', url: 'https://github.com/maintainer/archived-mirror',
+      description: 'Read-only mirror of a React Native mobile app', language: 'TypeScript', stars: 5000, archived: true,
+      pushedAt: oldPush, fork: false, license: 'MIT License',
+    },
+  ]);
+  const ranked = rankRepositories(discovery.repositories, 'React Native Engineer');
+  assert.equal(ranked[0].repository.fullName, 'maintainer/alpha-mobile',
+    'equal relevance should not be reordered by recent push date or star count');
+  const assessment = buildDeveloperAssessment(discovery, 'React Native Engineer', '', []);
+  const fork = assessment.relevantProjects.find((project) => project.fullName === 'maintainer/forked-mobile');
+  const mirror = assessment.relevantProjects.find((project) => project.fullName === 'maintainer/archived-mirror');
+  const oldProject = assessment.relevantProjects.find((project) => project.fullName === 'maintainer/alpha-mobile');
+  assert.equal(fork.originSignal.kind, 'observed');
+  assert.match(fork.originSignal.label, /GitHub-marked fork/i);
+  assert.match(fork.originSignal.detail, /upstream\/mobile-app/);
+  assert.equal(mirror.originSignal.kind, 'inference');
+  assert.match(mirror.originSignal.label, /possible mirror/i);
+  assert.match(mirror.originSignal.detail, /verify/i);
+  assert.match(mirror.archiveSignal.label, /archived/i);
+  assert.match(oldProject.activitySignal.label, /last 12 months/i);
+  assert.equal(oldProject.attributionSignal.kind, 'unknown');
+  assert.match(oldProject.attributionSignal.detail, /do not prove/i);
+  assert.doesNotMatch(assessment.summary, /\d+\s+role-relevant repository candidate/i);
+  assert.ok(assessment.evidenceInterpretation.observed.length > 0);
+  assert.ok(assessment.evidenceInterpretation.inferred.length > 0);
+  assert.ok(assessment.evidenceInterpretation.unknown.length > 0);
+});
+
 test('ranks role-relevant projects and builds an evidence-backed developer assessment', () => {
   const discovery = intelligenceDiscovery('alpha', [
     {
@@ -1412,7 +1498,11 @@ test('comparison keeps both accounts and their citations distinct and uses expli
   assert.ok(comparison.criteria.length >= 3);
   assert.ok(comparison.left.sources.every((source) => !source.url.includes('github.com/beta/')));
   assert.ok(comparison.right.sources.every((source) => !source.url.includes('github.com/alpha/')));
-  assert.match(comparison.summary, /public evidence|repository matches|metadata/i);
+  assert.match(comparison.summary, /public evidence/i);
+  assert.match(comparison.summary, /does not rank the accounts/i);
+  assert.doesNotMatch(comparison.summary, /more role-relevant repository matches/i);
+  assert.match(comparison.criteria[0].leftValue, /alpha\/mobile-app|No relevant project lead/i);
+  assert.doesNotMatch(comparison.criteria[0].leftValue, /matched project\(s\)/i);
 });
 
 test('React assessment uses inspected README evidence and keeps account-wide technology signals', () => {
