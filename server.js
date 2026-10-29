@@ -1809,7 +1809,7 @@ function collectIntelligenceChatSources(report) {
     if (Array.isArray(value.sources)) {
       for (const source of value.sources.slice(0, 40)) {
         if (!source || typeof source.id !== 'string' || !/^[a-z0-9_-]{1,100}$/i.test(source.id)) continue;
-        if (typeof source.url !== 'string' || !/^https:\/\/github\.com\/[a-z0-9_.-]+\/[a-z0-9_.-]+(?:\/|$)/i.test(source.url)) continue;
+        if (typeof source.url !== 'string' || !/^https:\/\/github\.com\/[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)?(?:[/?#]|$)/i.test(source.url)) continue;
         if (!sources.has(source.id)) {
           sources.set(source.id, {
             id: source.id,
