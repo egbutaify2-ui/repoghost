@@ -2963,10 +2963,18 @@ function createServer(dependencies = {}) {
             recovered = true;
           }
 
-          const answer = await answerIntelFollowup(caseRecord, question, {
-            history: normalizeAccountChatHistory(body.history),
-            fetchImpl,
-          });
+          let answer;
+          try {
+            answer = await answerIntelFollowup(caseRecord, question, {
+              history: normalizeAccountChatHistory(body.history),
+              fetchImpl,
+            });
+          } catch {
+            answer = buildIntelligenceChatFallback(caseRecord, question, collectIntelligenceChatSources(caseRecord.report));
+          }
+          if (!answer || typeof answer.answer !== 'string' || !answer.answer.trim()) {
+            answer = buildIntelligenceChatFallback(caseRecord, question, collectIntelligenceChatSources(caseRecord.report));
+          }
           return sendJson(res, 200, { ...answer, caseId: activeCaseId, recovered, requestId }, requestId);
         }
         if (pathname === '/api/intelligence/assess') {
