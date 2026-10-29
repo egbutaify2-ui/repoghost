@@ -1757,7 +1757,7 @@ test('answers contextual intelligence follow-ups with citations from the stored 
   });
   assert.equal(requestBody.response_format.type, 'json_object');
   assert.equal(requestBody.model, DEFAULT_MODEL);
-  assert.match(requestBody.messages[0].content, /Conversation history can resolve follow-up references/);
+  assert.match(requestBody.messages[0].content, /Conversation history helps resolve intent but is not evidence/);
   assert.match(requestBody.messages[1].content, /What supports the React Native match/);
   assert.match(requestBody.messages[1].content, /project-readme/);
   assert.equal(result.status.code, 'AI_READY');
