@@ -774,7 +774,7 @@ function attachIntelligenceChat(output, workflow, caseId) {
     '<form class="intel-chat-form"><label class="sr-only" for="intel-chat-question-' + escapeHtml(caseId) + '">Ask a follow-up question</label>' +
     '<input id="intel-chat-question-' + escapeHtml(caseId) + '" name="question" type="text" maxlength="700" autocomplete="off" placeholder="Ask the ghost about this case…" required>' +
     '<button type="submit"><span>Ask</span><span aria-hidden="true">↗</span></button></form>' +
-    '<p class="intel-chat-footnote">A fresh investigation starts a new conversation. Case context expires after 30 minutes or a server restart.</p>';
+    '<p class="intel-chat-footnote">A fresh investigation starts a new conversation. Case context expires after 30 minutes of inactivity or a server restart.</p>';
   output.appendChild(chat);
 
   const form = chat.querySelector('.intel-chat-form');
@@ -806,7 +806,7 @@ function attachIntelligenceChat(output, workflow, caseId) {
       const response = await fetch('/api/intelligence/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ caseId, question, history }),
+        body: JSON.stringify({ caseId, question, history: history.map((item) => ({ role: item.role, content: String(item.content || '').slice(0, item.role === 'assistant' ? 1000 : 600) })) }),
       });
       let payload;
       try { payload = await response.json(); }
