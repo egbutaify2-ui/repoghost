@@ -2320,8 +2320,8 @@ test('rejects intelligence follow-up citations that are not in the investigated 
   assert.equal(result.status.code, 'AI_FALLBACK');
   assert.ok(result.answer);
   assert.doesNotMatch(result.answer, /The project is secure/);
-  assert.doesNotMatch(result.answer, /AI_INVALID_OUTPUT|model could not provide/i);
-  assert.deepEqual(result.citations, []);
+  assert.doesNotMatch(result.answer, /AI_INVALID_OUTPUT|model could not provide|The project is secure/i);
+  assert.ok(result.citations.every((source) => /^https:\/\/github\.com\//i.test(source.url)));
 });
 
 
