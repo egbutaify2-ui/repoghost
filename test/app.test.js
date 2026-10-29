@@ -1828,7 +1828,7 @@ test('keeps intelligence chat conversational when a case has no usable evidence 
   assert.equal(requestBody.response_format.type, 'json_object');
   assert.match(requestBody.messages[0].content, /Missing GitHub evidence is never, by itself, a reason to refuse to chat/);
   assert.match(requestBody.messages[1].content, /Missing evidence is not a reason to stop replying/);
-  assert.match(requestBody.messages[1].content, /"sources":\\[\\]/);
+  assert.ok(requestBody.messages[1].content.includes('"sources":[]'));
   assert.equal(generalContext.status.code, 'AI_READY');
   assert.equal(generalContext.answerType, 'general_context');
   assert.match(generalContext.answer, /In general/);
